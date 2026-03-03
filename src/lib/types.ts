@@ -1,7 +1,7 @@
-export type ProjectType = 'Bath' | 'Full Rehab';
+export type ProjectType = 'Bath' | 'Full Rehab' | 'Kitchen' | 'Small Job';
 export type EstimateStatus = 'Draft' | 'Ready' | 'Sent' | 'Accepted' | 'Rejected';
 export type FinishLevel = 'Basic' | 'Mid' | 'High' | 'Luxury';
-export type QtyRule = 'sqft' | 'fixture' | 'lump_sum' | 'each' | 'lf';
+export type QtyRule = 'sqft' | 'fixture' | 'lump_sum' | 'each' | 'lf' | 'hour';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
 export type AuditStatus = 'Open' | 'Accepted' | 'Ignored';
 
@@ -22,6 +22,7 @@ export interface Estimate {
   project_type: ProjectType;
   sqft: number;
   fixture_count: number;
+  labor_hours: number;
   finish_level: FinishLevel;
   finish_materials_included: boolean;
   labor_subtotal: number;

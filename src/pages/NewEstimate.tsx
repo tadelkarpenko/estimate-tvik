@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
   finish_level: 'Basic', finish_materials_included: false, overhead_pct: 0.10,
-  profit_pct: 0.20, contingency_pct: 0.10, sqft: 0, fixture_count: 0, version: 'v1.0',
+  profit_pct: 0.20, contingency_pct: 0.10, sqft: 0, fixture_count: 0, labor_hours: 0, version: 'v1.0',
   client_name: '', client_email: '', client_phone: '', project_address: '', city: '', zip: '',
   project_name: '', labor_subtotal: 0, material_subtotal: 0, subtotal: 0, risk_cost_low: 0,
   risk_cost_high: 0, overall_risk_level: 'Low', total_low: 0, total_high: 0,
@@ -54,9 +54,11 @@ export default function NewEstimate() {
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!form.sqft || form.sqft <= 0) errs.sqft = 'Square footage required';
-    if (form.project_type === 'Bath' && (!form.fixture_count || form.fixture_count <= 0))
-      errs.fixture_count = 'Fixture count required for Bath projects';
+    if (form.project_type !== 'Small Job' && (!form.sqft || form.sqft <= 0)) errs.sqft = 'Square footage required';
+    if ((form.project_type === 'Bath' || form.project_type === 'Kitchen') && (!form.fixture_count || form.fixture_count <= 0))
+      errs.fixture_count = 'Fixture count required';
+    if (form.project_type === 'Small Job' && (!form.labor_hours || form.labor_hours <= 0))
+      errs.labor_hours = 'Labor hours required for Small Jobs';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -84,6 +86,7 @@ export default function NewEstimate() {
       const riskLib = getRiskLibrary();
       const costResult = runCostEngine({
         project_type: form.project_type as ProjectType, sqft: form.sqft!, fixture_count: form.fixture_count || 0,
+        labor_hours: form.labor_hours || 0,
         finish_level: form.finish_level as FinishLevel, finish_materials_included: form.finish_materials_included!,
         costLibrary: costLib,
       });
@@ -177,7 +180,12 @@ export default function NewEstimate() {
                 <Label>Project Type</Label>
                 <Select value={form.project_type} onValueChange={v => update({ project_type: v as ProjectType })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem></SelectContent>
+                  <SelectContent>
+                    <SelectItem value="Bath">Bath</SelectItem>
+                    <SelectItem value="Full Rehab">Full Rehab</SelectItem>
+                    <SelectItem value="Kitchen">Kitchen</SelectItem>
+                    <SelectItem value="Small Job">Small Job</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
               <div>
@@ -189,16 +197,25 @@ export default function NewEstimate() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Square Footage *</Label>
-                <Input type="number" value={form.sqft || ''} onChange={e => update({ sqft: Number(e.target.value) })} />
-                {errors.sqft && <p className="text-xs text-destructive mt-1">{errors.sqft}</p>}
-              </div>
-              {form.project_type === 'Bath' && (
+              {form.project_type !== 'Small Job' && (
+                <div>
+                  <Label>Square Footage *</Label>
+                  <Input type="number" value={form.sqft || ''} onChange={e => update({ sqft: Number(e.target.value) })} />
+                  {errors.sqft && <p className="text-xs text-destructive mt-1">{errors.sqft}</p>}
+                </div>
+              )}
+              {(form.project_type === 'Bath' || form.project_type === 'Kitchen') && (
                 <div>
                   <Label>Fixture Count *</Label>
                   <Input type="number" value={form.fixture_count || ''} onChange={e => update({ fixture_count: Number(e.target.value) })} />
                   {errors.fixture_count && <p className="text-xs text-destructive mt-1">{errors.fixture_count}</p>}
+                </div>
+              )}
+              {form.project_type === 'Small Job' && (
+                <div>
+                  <Label>Labor Hours *</Label>
+                  <Input type="number" value={form.labor_hours || ''} onChange={e => update({ labor_hours: Number(e.target.value) })} />
+                  {errors.labor_hours && <p className="text-xs text-destructive mt-1">{errors.labor_hours}</p>}
                 </div>
               )}
             </div>
