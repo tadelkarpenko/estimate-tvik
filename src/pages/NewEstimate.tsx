@@ -4,7 +4,7 @@ import type { Estimate, EstimateStatus, ProjectType, FinishLevel } from '@/lib/t
 import { getEstimate, saveEstimate, nextEstimateId, uid, getCostLibrary, getRiskLibrary, getRevisionLogs, saveRevisionLog } from '@/lib/store';
 import { runCostEngine } from '@/lib/costEngine';
 import { runRiskEngine } from '@/lib/riskEngine';
-import { generateAssumptions, generateTimeline, generateScope, generateAudit } from '@/lib/generators';
+import { generateAssumptions, generateTimeline, generateScopeAI, generateAuditAI } from '@/lib/generators';
 import { generatePublicPDF, generateInternalPDF } from '@/lib/pdfGenerator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,48 +73,63 @@ export default function NewEstimate() {
     toast({ title: 'Draft saved', description: est.estimate_id });
   };
 
-  const generate = () => {
+  const [generating, setGenerating] = useState(false);
+
+  const generate = async () => {
     if (!validate()) { toast({ title: 'Validation failed', variant: 'destructive' }); return; }
+    setGenerating(true);
 
-    const costLib = getCostLibrary();
-    const riskLib = getRiskLibrary();
-    const costResult = runCostEngine({
-      project_type: form.project_type as ProjectType, sqft: form.sqft!, fixture_count: form.fixture_count || 0,
-      finish_level: form.finish_level as FinishLevel, finish_materials_included: form.finish_materials_included!,
-      costLibrary: costLib,
-    });
-    const riskResult = runRiskEngine({ project_type: form.project_type as ProjectType, subtotal: costResult.subtotal, riskLibrary: riskLib });
+    try {
+      const costLib = getCostLibrary();
+      const riskLib = getRiskLibrary();
+      const costResult = runCostEngine({
+        project_type: form.project_type as ProjectType, sqft: form.sqft!, fixture_count: form.fixture_count || 0,
+        finish_level: form.finish_level as FinishLevel, finish_materials_included: form.finish_materials_included!,
+        costLibrary: costLib,
+      });
+      const riskResult = runRiskEngine({ project_type: form.project_type as ProjectType, subtotal: costResult.subtotal, riskLibrary: riskLib });
 
-    const marginMult = (1 + (form.overhead_pct || 0.1)) * (1 + (form.profit_pct || 0.2)) * (1 + (form.contingency_pct || 0.1));
-    const total_low = Math.round((costResult.subtotal + riskResult.risk_cost_low) * marginMult * 100) / 100;
-    const total_high = Math.round((costResult.subtotal + riskResult.risk_cost_high) * marginMult * 100) / 100;
+      const marginMult = (1 + (form.overhead_pct || 0.1)) * (1 + (form.profit_pct || 0.2)) * (1 + (form.contingency_pct || 0.1));
+      const total_low = Math.round((costResult.subtotal + riskResult.risk_cost_low) * marginMult * 100) / 100;
+      const total_high = Math.round((costResult.subtotal + riskResult.risk_cost_high) * marginMult * 100) / 100;
 
-    const partial: Partial<Estimate> = {
-      ...costResult, line_items_json: JSON.stringify(costResult.line_items),
-      cost_structure_json: JSON.stringify(costResult.cost_structure),
-      ...riskResult, risk_table_json: JSON.stringify(riskResult.risk_table),
-      total_low, total_high,
-    };
-    const merged = { ...form, ...partial };
-    const assumptions = generateAssumptions(merged);
-    const timeline = generateTimeline(merged);
-    merged.assumptions_rich = assumptions;
-    merged.timeline_rich = timeline;
-    const scope = generateScope(merged);
-    merged.ai_scope = scope;
-    const audit = generateAudit({ ...merged, estimate_id: merged.estimate_id || 'DRAFT' });
-    merged.ai_price_audit_summary = audit;
-    merged.status = 'Ready' as EstimateStatus;
+      const partial: Partial<Estimate> = {
+        ...costResult, line_items_json: JSON.stringify(costResult.line_items),
+        cost_structure_json: JSON.stringify(costResult.cost_structure),
+        ...riskResult, risk_table_json: JSON.stringify(riskResult.risk_table),
+        total_low, total_high,
+      };
+      const merged = { ...form, ...partial };
+      merged.assumptions_rich = generateAssumptions(merged);
+      merged.timeline_rich = generateTimeline(merged);
 
-    const est: Estimate = {
-      ...defaultEst, ...merged,
-      estimate_id: merged.estimate_id || nextEstimateId(),
-      created_at: merged.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    } as Estimate;
-    saveEstimate(est);
-    setForm(est);
-    toast({ title: 'Estimate generated', description: `${est.estimate_id} — $${est.total_low.toLocaleString()} – $${est.total_high.toLocaleString()}` });
+      // Save deterministic results first
+      const estId = merged.estimate_id || nextEstimateId();
+      merged.estimate_id = estId;
+      merged.created_at = merged.created_at || new Date().toISOString();
+      merged.status = 'Ready' as EstimateStatus;
+
+      // Run AI in parallel
+      toast({ title: 'Running AI analysis...', description: 'Generating scope & audit via AI' });
+      const [scope, audit] = await Promise.all([
+        generateScopeAI(merged),
+        generateAuditAI({ ...merged, estimate_id: estId }),
+      ]);
+      merged.ai_scope = scope;
+      merged.ai_price_audit_summary = audit;
+
+      const est: Estimate = {
+        ...defaultEst, ...merged, updated_at: new Date().toISOString(),
+      } as Estimate;
+      saveEstimate(est);
+      setForm(est);
+      toast({ title: 'Estimate generated', description: `${est.estimate_id} — $${est.total_low.toLocaleString()} – $${est.total_high.toLocaleString()}` });
+    } catch (e) {
+      console.error('Generate error:', e);
+      toast({ title: 'Generation error', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const createRevision = () => {
@@ -235,7 +250,7 @@ export default function NewEstimate() {
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={saveDraft}>Save Draft</Button>
-        <Button variant="gold" onClick={generate}>Generate</Button>
+        <Button variant="gold" onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
         {form.subtotal! > 0 && (
           <>
             <Button variant="outline" onClick={() => generatePublicPDF(form as Estimate)}><FileDown className="mr-1 h-4 w-4" />Public PDF</Button>

@@ -1,5 +1,6 @@
-import type { Estimate, LineItem, CostStructureItem, RiskTableItem } from './types';
+import type { Estimate, CostStructureItem } from './types';
 import { getEstimates, getCostAudits, saveCostAudit, uid } from './store';
+import { supabase } from '@/integrations/supabase/client';
 
 export function generateAssumptions(est: Partial<Estimate>): string {
   const lines: string[] = [
@@ -30,95 +31,108 @@ export function generateTimeline(est: Partial<Estimate>): string {
   return '## Estimated Timeline\n\n- **Demolition & Protection**: 1-2 weeks\n- **Structural/Framing**: 1-2 weeks\n- **MEP Rough-in**: 2-3 weeks\n- **Drywall & Finishes**: 2-3 weeks\n- **Flooring & Paint**: 1-2 weeks\n- **Punch & Inspections**: 1 week\n\n**Total: ~8-13 weeks**';
 }
 
-export function generateScope(est: Partial<Estimate>): string {
-  const lineItems: LineItem[] = est.line_items_json ? JSON.parse(est.line_items_json) : [];
-  const costStructure: CostStructureItem[] = est.cost_structure_json ? JSON.parse(est.cost_structure_json) : [];
-  const riskTable: RiskTableItem[] = est.risk_table_json ? JSON.parse(est.risk_table_json) : [];
-
-  let scope = `# Preconstruction Advisory — ${est.project_name || 'Project'}\n\n`;
-  scope += `## 1. Executive Summary\n\nThis estimate covers a **${est.project_type}** project at ${est.project_address || 'TBD'}, ${est.city || ''}, ${est.state || 'IL'} ${est.zip || ''}. Total area: **${est.sqft} SF**. Finish level: **${est.finish_level}**.\n\n`;
-  scope += `- Labor subtotal: $${(est.labor_subtotal || 0).toLocaleString()}\n- Material subtotal: $${(est.material_subtotal || 0).toLocaleString()}\n- Base subtotal: $${(est.subtotal || 0).toLocaleString()}\n- Range: $${(est.total_low || 0).toLocaleString()} – $${(est.total_high || 0).toLocaleString()}\n\n`;
-
-  scope += `## 2. Scope by Trades\n\n`;
-  for (const li of lineItems) {
-    if (li.total > 0) scope += `- **${li.trade}**: ${li.description} — ${li.qty} ${li.unit} — Labor $${li.labor.toLocaleString()} / Material $${li.material.toLocaleString()}\n`;
+export async function generateScopeAI(est: Partial<Estimate>): Promise<string> {
+  try {
+    const { data, error } = await supabase.functions.invoke('estimate-ai', {
+      body: {
+        action: 'scope',
+        data: {
+          project_name: est.project_name,
+          project_type: est.project_type,
+          project_address: est.project_address,
+          city: est.city,
+          state: est.state,
+          zip: est.zip,
+          sqft: est.sqft,
+          finish_level: est.finish_level,
+          finish_materials_included: est.finish_materials_included,
+          labor_subtotal: est.labor_subtotal,
+          material_subtotal: est.material_subtotal,
+          subtotal: est.subtotal,
+          total_low: est.total_low,
+          total_high: est.total_high,
+          line_items_json: est.line_items_json,
+          cost_structure_json: est.cost_structure_json,
+          risk_table_json: est.risk_table_json,
+          assumptions_rich: est.assumptions_rich,
+          timeline_rich: est.timeline_rich,
+        },
+      },
+    });
+    if (error) throw error;
+    return data?.content || 'AI scope generation failed — no content returned.';
+  } catch (e) {
+    console.error('AI scope error:', e);
+    return `AI scope generation failed: ${e instanceof Error ? e.message : 'Unknown error'}. Falling back to template.\n\n${generateScopeFallback(est)}`;
   }
-
-  scope += `\n## 3. Allowances & Owner Items\n\n`;
-  if (!est.finish_materials_included) {
-    scope += `- **Finish materials excluded**: Paint materials, tile setting materials, flooring underlayment/consumables, and decorative fixtures are NOT included in this estimate. Owner to procure or contract separately.\n`;
-  }
-  scope += `- Owner responsible for all furnishings, appliances (unless specified), and items outside listed scope.\n`;
-
-  scope += `\n## 4. Assumptions\n\n${est.assumptions_rich || 'See assumptions section.'}\n`;
-
-  scope += `\n## 5. Risk Notes\n\n`;
-  for (const r of riskTable) {
-    scope += `- **${r.risk_name}** (${r.level}): Exposure $${r.exposure_low.toLocaleString()}–$${r.exposure_high.toLocaleString()}. Mitigation: ${r.mitigation_note}\n`;
-  }
-
-  scope += `\n## 6. Next Steps\n\n- Review and approve estimate\n- Schedule site walkthrough for field verification\n- Finalize material selections (if applicable)\n- Execute contract and submit permits\n`;
-
-  return scope;
 }
 
-export function generateAudit(est: Partial<Estimate>): string {
+export async function generateAuditAI(est: Partial<Estimate>): Promise<string> {
   const estimates = getEstimates().filter(e => e.project_type === est.project_type && e.subtotal > 0 && e.estimate_id !== est.estimate_id);
   const costPerSqft = (est.subtotal || 0) / (est.sqft || 1);
   const laborRatio = (est.labor_subtotal || 0) / (est.subtotal || 1);
-  const materialRatio = (est.material_subtotal || 0) / (est.subtotal || 1);
   const riskRatioHigh = (est.risk_cost_high || 0) / (est.subtotal || 1);
-
   const histAvgCPS = estimates.length > 0 ? estimates.reduce((s, e) => s + (e.subtotal / (e.sqft || 1)), 0) / estimates.length : costPerSqft;
   const histAvgRR = estimates.length > 0 ? estimates.reduce((s, e) => s + ((e.risk_cost_high || 0) / (e.subtotal || 1)), 0) / estimates.length : riskRatioHigh;
-
   const costStructure: CostStructureItem[] = est.cost_structure_json ? JSON.parse(est.cost_structure_json) : [];
+
+  try {
+    const { data, error } = await supabase.functions.invoke('estimate-ai', {
+      body: {
+        action: 'audit',
+        data: {
+          cost_per_sqft: costPerSqft,
+          labor_ratio: laborRatio,
+          risk_ratio_high: riskRatioHigh,
+          historical_avg_cost_per_sqft: histAvgCPS,
+          historical_avg_risk_ratio_high: histAvgRR,
+          historical_count: estimates.length,
+          cost_structure: costStructure,
+          subtotal: est.subtotal,
+          project_type: est.project_type,
+          sqft: est.sqft,
+        },
+      },
+    });
+    if (error) throw error;
+    const auditText = data?.content || 'No audit content returned.';
+
+    saveCostAudit({
+      id: uid(),
+      estimate_id: est.estimate_id || '',
+      created_at: new Date().toISOString(),
+      findings_json: JSON.stringify([auditText]),
+      recommended_actions: auditText,
+      status: 'Open',
+    });
+
+    return auditText;
+  } catch (e) {
+    console.error('AI audit error:', e);
+    const fallback = generateAuditFallback(est, costPerSqft, histAvgCPS, riskRatioHigh, costStructure);
+    saveCostAudit({
+      id: uid(),
+      estimate_id: est.estimate_id || '',
+      created_at: new Date().toISOString(),
+      findings_json: '[]',
+      recommended_actions: fallback,
+      status: 'Open',
+    });
+    return `AI audit failed: ${e instanceof Error ? e.message : 'Unknown error'}. Falling back to template.\n\n${fallback}`;
+  }
+}
+
+// Fallback generators (kept for offline/error scenarios)
+function generateScopeFallback(est: Partial<Estimate>): string {
+  return `# Preconstruction Advisory — ${est.project_name || 'Project'}\n\n## 1. Executive Summary\n${est.project_type} project, ${est.sqft} SF, ${est.finish_level} finish.\nRange: $${(est.total_low || 0).toLocaleString()} – $${(est.total_high || 0).toLocaleString()}\n\n## 2–6. See generated assumptions and risk tables for details.`;
+}
+
+function generateAuditFallback(est: Partial<Estimate>, cps: number, histCps: number, rrh: number, cs: CostStructureItem[]): string {
   const findings: string[] = [];
-  const causes: string[] = [];
-  const actions: string[] = [];
-
-  const cpsDev = histAvgCPS > 0 ? Math.abs(costPerSqft - histAvgCPS) / histAvgCPS : 0;
-  if (cpsDev > 0.15) {
-    findings.push(`Cost/sqft ($${costPerSqft.toFixed(2)}) deviates ${(cpsDev * 100).toFixed(1)}% from historical avg ($${histAvgCPS.toFixed(2)})`);
-    causes.push('Scope complexity, material selections, or market conditions may differ from historical norms');
-    actions.push('Review trade unit costs against current market rates');
-  }
-
-  const topTrade = costStructure.sort((a, b) => b.percent - a.percent)[0];
-  if (topTrade && topTrade.percent > 35) {
-    findings.push(`${topTrade.trade} represents ${topTrade.percent.toFixed(1)}% of subtotal (>35% threshold)`);
-    causes.push(`${topTrade.trade} may have elevated unit costs or disproportionate scope`);
-    actions.push(`Verify ${topTrade.trade} unit costs and scope against field conditions`);
-  }
-
-  if (riskRatioHigh > 0.18) {
-    findings.push(`Risk ratio high (${(riskRatioHigh * 100).toFixed(1)}%) exceeds 18% threshold`);
-    causes.push('Multiple elevated risk factors or high-exposure items');
-    actions.push('Consider pre-construction investigations to reduce uncertainty');
-  }
-
-  let auditText = '## AI Price Audit\n\n';
-  if (findings.length === 0) {
-    auditText += '**No material anomalies detected.** All metrics within acceptable ranges.\n';
-  } else {
-    auditText += '### A) Findings\n';
-    findings.forEach(f => auditText += `- ${f}\n`);
-    auditText += '\n### B) Likely Causes\n';
-    causes.forEach(c => auditText += `- ${c}\n`);
-    auditText += '\n### C) Recommended Actions\n';
-    actions.forEach(a => auditText += `- ${a}\n`);
-    auditText += '\n### D) What NOT to Change\n- Do not manually adjust computed totals. Any corrections should flow through CostLibrary unit cost updates.\n';
-  }
-
-  // Save CostAudit record
-  saveCostAudit({
-    id: uid(),
-    estimate_id: est.estimate_id || '',
-    created_at: new Date().toISOString(),
-    findings_json: JSON.stringify(findings),
-    recommended_actions: auditText,
-    status: findings.length > 0 ? 'Open' : 'Accepted',
-  });
-
-  return auditText;
+  const cpsDev = histCps > 0 ? Math.abs(cps - histCps) / histCps : 0;
+  if (cpsDev > 0.15) findings.push(`Cost/sqft ($${cps.toFixed(2)}) deviates ${(cpsDev * 100).toFixed(1)}% from avg ($${histCps.toFixed(2)})`);
+  const top = cs.sort((a, b) => b.percent - a.percent)[0];
+  if (top && top.percent > 35) findings.push(`${top.trade} = ${top.percent.toFixed(1)}% of subtotal (>35%)`);
+  if (rrh > 0.18) findings.push(`Risk ratio ${(rrh * 100).toFixed(1)}% > 18%`);
+  return findings.length > 0 ? `## Findings (Template)\n${findings.map(f => `- ${f}`).join('\n')}` : '## No material anomalies detected.';
 }
