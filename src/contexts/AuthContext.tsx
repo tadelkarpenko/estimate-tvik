@@ -1,50 +1,68 @@
-import React, { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
+  user: User | null;
+  session: Session | null;
   isAuthenticated: boolean;
-  login: (password: string) => boolean;
-  logout: () => void;
+  isLoading: boolean;
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({ isAuthenticated: false, login: () => false, logout: () => {} });
-
-const DEFAULT_PASSWORD = 'tvik2024';
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 30000;
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  session: null,
+  isAuthenticated: false,
+  isLoading: true,
+  signIn: async () => ({ error: null }),
+  signUp: async () => ({ error: null }),
+  signOut: async () => {},
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('tvik_auth') === '1');
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = useCallback((password: string) => {
-    const now = Date.now();
-    const attempts = parseInt(localStorage.getItem('tvik_login_attempts') || '0', 10);
-    const lockUntil = parseInt(localStorage.getItem('tvik_lockout') || '0', 10);
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
 
-    if (lockUntil > now) return false;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
 
-    const storedPw = localStorage.getItem('tvik_admin_password') || DEFAULT_PASSWORD;
-    if (password === storedPw) {
-      sessionStorage.setItem('tvik_auth', '1');
-      localStorage.setItem('tvik_login_attempts', '0');
-      setIsAuthenticated(true);
-      return true;
-    }
-
-    const newAttempts = attempts + 1;
-    localStorage.setItem('tvik_login_attempts', String(newAttempts));
-    if (newAttempts >= MAX_ATTEMPTS) {
-      localStorage.setItem('tvik_lockout', String(now + LOCKOUT_MS));
-      localStorage.setItem('tvik_login_attempts', '0');
-    }
-    return false;
+    return () => subscription.unsubscribe();
   }, []);
 
-  const logout = useCallback(() => {
-    sessionStorage.removeItem('tvik_auth');
-    setIsAuthenticated(false);
-  }, []);
+  const signIn = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return { error: error?.message ?? null };
+  };
 
-  return <AuthContext.Provider value={{ isAuthenticated, login, logout }}>{children}</AuthContext.Provider>;
+  const signUp = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) return { error: error.message };
+    return { error: null };
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, session, isAuthenticated: !!session, isLoading, signIn, signUp, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export const useAuth = () => useContext(AuthContext);
