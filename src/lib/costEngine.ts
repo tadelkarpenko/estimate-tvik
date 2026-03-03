@@ -12,6 +12,7 @@ interface CostInput {
   project_type: ProjectType;
   sqft: number;
   fixture_count: number;
+  labor_hours: number;
   finish_level: FinishLevel;
   finish_materials_included: boolean;
   costLibrary: CostLibraryItem[];
@@ -37,6 +38,7 @@ export function runCostEngine(input: CostInput): CostResult {
       case 'fixture': qty = input.fixture_count; break;
       case 'lump_sum': case 'each': qty = 1; break;
       case 'lf': qty = 0; break;
+      case 'hour': qty = input.labor_hours; break;
     }
     const labor = Math.round(qty * row.labor_unit_cost * 100) / 100;
     let material = Math.round(qty * row.material_unit_cost * finishMult * 100) / 100;

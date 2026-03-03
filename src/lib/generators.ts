@@ -28,6 +28,12 @@ export function generateTimeline(est: Partial<Estimate>): string {
   if (est.project_type === 'Bath') {
     return '## Estimated Timeline\n\n- **Demolition & Prep**: 2-3 days\n- **Rough-in (Plumbing/Electrical)**: 3-4 days\n- **Drywall & Tile**: 5-7 days\n- **Paint & Finish**: 2-3 days\n- **Final Inspections**: 1-2 days\n\n**Total: ~3-4 weeks**';
   }
+  if (est.project_type === 'Kitchen') {
+    return '## Estimated Timeline\n\n- **Demolition & Prep**: 3-5 days\n- **Rough-in (Plumbing/Electrical/Gas)**: 3-5 days\n- **Drywall & Patch**: 2-3 days\n- **Cabinets & Countertops**: 5-7 days\n- **Tile Backsplash**: 2-3 days\n- **Flooring**: 2-3 days\n- **Paint & Finish**: 2-3 days\n- **Appliance Hookup & Punch**: 2-3 days\n\n**Total: ~4-6 weeks**';
+  }
+  if (est.project_type === 'Small Job') {
+    return '## Estimated Timeline\n\n- **Mobilization & Setup**: 0.5-1 day\n- **Execution**: Based on labor hours quoted\n- **Cleanup & Punch**: 0.5 day\n\n**Total: ~1-3 days (varies by scope)**';
+  }
   return '## Estimated Timeline\n\n- **Demolition & Protection**: 1-2 weeks\n- **Structural/Framing**: 1-2 weeks\n- **MEP Rough-in**: 2-3 weeks\n- **Drywall & Finishes**: 2-3 weeks\n- **Flooring & Paint**: 1-2 weeks\n- **Punch & Inspections**: 1 week\n\n**Total: ~8-13 weeks**';
 }
 
