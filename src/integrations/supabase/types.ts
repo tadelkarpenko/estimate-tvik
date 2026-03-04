@@ -115,19 +115,25 @@ export type Database = {
           cash_forecast_90: number
           contract_id: string
           contract_status: string
+          cost_volatility_index: number
           created_at: string
           earned_revenue: number
           estimate_id: string
+          execution_priority_score: number
           id: string
           locked: boolean
           margin_current_pct: number
+          margin_opportunity_score: number
+          margin_risk_score: number
           net_contract_value: number
           payment_schedule_json: string
           payment_terms_template: string
           percent_complete: number
+          pm_scorecard_json: string
           profit_fade_flag: boolean
           projected_final_cost: number
           projected_final_profit: number
+          risk_quadrant: string
           signed_date: string
           updated_at: string
           user_id: string
@@ -141,19 +147,25 @@ export type Database = {
           cash_forecast_90?: number
           contract_id: string
           contract_status?: string
+          cost_volatility_index?: number
           created_at?: string
           earned_revenue?: number
           estimate_id: string
+          execution_priority_score?: number
           id?: string
           locked?: boolean
           margin_current_pct?: number
+          margin_opportunity_score?: number
+          margin_risk_score?: number
           net_contract_value?: number
           payment_schedule_json?: string
           payment_terms_template?: string
           percent_complete?: number
+          pm_scorecard_json?: string
           profit_fade_flag?: boolean
           projected_final_cost?: number
           projected_final_profit?: number
+          risk_quadrant?: string
           signed_date?: string
           updated_at?: string
           user_id: string
@@ -167,19 +179,25 @@ export type Database = {
           cash_forecast_90?: number
           contract_id?: string
           contract_status?: string
+          cost_volatility_index?: number
           created_at?: string
           earned_revenue?: number
           estimate_id?: string
+          execution_priority_score?: number
           id?: string
           locked?: boolean
           margin_current_pct?: number
+          margin_opportunity_score?: number
+          margin_risk_score?: number
           net_contract_value?: number
           payment_schedule_json?: string
           payment_terms_template?: string
           percent_complete?: number
+          pm_scorecard_json?: string
           profit_fade_flag?: boolean
           projected_final_cost?: number
           projected_final_profit?: number
+          risk_quadrant?: string
           signed_date?: string
           updated_at?: string
           user_id?: string
@@ -751,6 +769,100 @@ export type Database = {
         }
         Relationships: []
       }
+      execution_events: {
+        Row: {
+          contract_id: string
+          created_at: string
+          event_type: string
+          id: string
+          payload_json: string
+          processed_at: string | null
+          result_json: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          contract_id: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload_json?: string
+          processed_at?: string | null
+          result_json?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          contract_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload_json?: string
+          processed_at?: string | null
+          result_json?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "execution_events_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pm_scorecard_snapshots: {
+        Row: {
+          change_order_quality: number
+          composite_score: number
+          contract_id: string
+          created_at: string
+          forecast_accuracy: number
+          id: string
+          margin_discipline: number
+          margin_expansion: number
+          schedule_integrity: number
+          snapshot_json: string
+          user_id: string
+        }
+        Insert: {
+          change_order_quality?: number
+          composite_score?: number
+          contract_id: string
+          created_at?: string
+          forecast_accuracy?: number
+          id?: string
+          margin_discipline?: number
+          margin_expansion?: number
+          schedule_integrity?: number
+          snapshot_json?: string
+          user_id: string
+        }
+        Update: {
+          change_order_quality?: number
+          composite_score?: number
+          contract_id?: string
+          created_at?: string
+          forecast_accuracy?: number
+          id?: string
+          margin_discipline?: number
+          margin_expansion?: number
+          schedule_integrity?: number
+          snapshot_json?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pm_scorecard_snapshots_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       revision_logs: {
         Row: {
           change_summary: string
@@ -823,6 +935,238 @@ export type Database = {
           project_type?: string
           risk_name?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      schedule_phases: {
+        Row: {
+          actual_days: number
+          actual_finish: string | null
+          actual_start: string | null
+          contract_id: string
+          created_at: string
+          delay_ratio: number
+          depends_on_phase: string | null
+          id: string
+          phase_name: string
+          planned_days: number
+          planned_finish: string | null
+          planned_start: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          actual_days?: number
+          actual_finish?: string | null
+          actual_start?: string | null
+          contract_id: string
+          created_at?: string
+          delay_ratio?: number
+          depends_on_phase?: string | null
+          id?: string
+          phase_name?: string
+          planned_days?: number
+          planned_finish?: string | null
+          planned_start?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          actual_days?: number
+          actual_finish?: string | null
+          actual_start?: string | null
+          contract_id?: string
+          created_at?: string
+          delay_ratio?: number
+          depends_on_phase?: string | null
+          id?: string
+          phase_name?: string
+          planned_days?: number
+          planned_finish?: string | null
+          planned_start?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_phases_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_phases_depends_on_phase_fkey"
+            columns: ["depends_on_phase"]
+            isOneToOne: false
+            referencedRelation: "schedule_phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subcontract_invoices: {
+        Row: {
+          amount: number
+          created_at: string
+          dispute_flag: boolean
+          dispute_reason: string
+          id: string
+          invoice_id: string
+          paid_at: string | null
+          status: string
+          subcontract_id: string
+          submitted_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          dispute_flag?: boolean
+          dispute_reason?: string
+          id?: string
+          invoice_id: string
+          paid_at?: string | null
+          status?: string
+          subcontract_id: string
+          submitted_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          dispute_flag?: boolean
+          dispute_reason?: string
+          id?: string
+          invoice_id?: string
+          paid_at?: string | null
+          status?: string
+          subcontract_id?: string
+          submitted_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontract_invoices_subcontract_id_fkey"
+            columns: ["subcontract_id"]
+            isOneToOne: false
+            referencedRelation: "subcontracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subcontracts: {
+        Row: {
+          approved_cost: number
+          committed_cost: number
+          contract_id: string
+          created_at: string
+          estimated_trade_budget: number
+          exposure_index: number
+          id: string
+          notes: string
+          remaining_commitment: number
+          status: string
+          subcontract_id: string
+          trade: string
+          updated_at: string
+          user_id: string
+          vendor_name: string
+        }
+        Insert: {
+          approved_cost?: number
+          committed_cost?: number
+          contract_id: string
+          created_at?: string
+          estimated_trade_budget?: number
+          exposure_index?: number
+          id?: string
+          notes?: string
+          remaining_commitment?: number
+          status?: string
+          subcontract_id: string
+          trade?: string
+          updated_at?: string
+          user_id: string
+          vendor_name?: string
+        }
+        Update: {
+          approved_cost?: number
+          committed_cost?: number
+          contract_id?: string
+          created_at?: string
+          estimated_trade_budget?: number
+          exposure_index?: number
+          id?: string
+          notes?: string
+          remaining_commitment?: number
+          status?: string
+          subcontract_id?: string
+          trade?: string
+          updated_at?: string
+          user_id?: string
+          vendor_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontracts_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_performance: {
+        Row: {
+          avg_schedule_delay: number
+          avg_trade_variance: number
+          billing_accuracy_score: number
+          change_order_behavior_score: number
+          contracts_count: number
+          cost_reliability_score: number
+          created_at: string
+          id: string
+          invoice_dispute_rate: number
+          last_computed_at: string
+          performance_score: number
+          retention_issue_rate: number
+          schedule_reliability_score: number
+          user_id: string
+          vendor_name: string
+        }
+        Insert: {
+          avg_schedule_delay?: number
+          avg_trade_variance?: number
+          billing_accuracy_score?: number
+          change_order_behavior_score?: number
+          contracts_count?: number
+          cost_reliability_score?: number
+          created_at?: string
+          id?: string
+          invoice_dispute_rate?: number
+          last_computed_at?: string
+          performance_score?: number
+          retention_issue_rate?: number
+          schedule_reliability_score?: number
+          user_id: string
+          vendor_name: string
+        }
+        Update: {
+          avg_schedule_delay?: number
+          avg_trade_variance?: number
+          billing_accuracy_score?: number
+          change_order_behavior_score?: number
+          contracts_count?: number
+          cost_reliability_score?: number
+          created_at?: string
+          id?: string
+          invoice_dispute_rate?: number
+          last_computed_at?: string
+          performance_score?: number
+          retention_issue_rate?: number
+          schedule_reliability_score?: number
+          user_id?: string
+          vendor_name?: string
         }
         Relationships: []
       }
