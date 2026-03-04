@@ -6,7 +6,7 @@ export type RiskLevel = 'Low' | 'Medium' | 'High';
 export type AuditStatus = 'Open' | 'Accepted' | 'Ignored';
 export type Phase = 'Demo' | 'Protection' | 'Framing' | 'Drywall' | 'Paint' | 'Flooring' | 'Electrical' | 'Plumbing' | 'HVAC' | 'Kitchen' | 'Bath' | 'Exterior' | 'Roofing' | 'Permits' | 'Cleaning' | 'Other';
 export type LineItemUnit = 'ea' | 'sf' | 'lf' | 'fixture' | 'hr' | 'day' | 'lump_sum';
-export type LineItemSource = 'CostLibrary' | 'Assembly' | 'Manual' | 'AI_Suggestion';
+export type LineItemSource = 'CostLibrary' | 'Assembly' | 'Manual' | 'AI_Suggestion' | 'AI Draft' | 'PhotoAI';
 export type CrewTrade = 'Demo' | 'Framing' | 'Drywall' | 'Paint' | 'Flooring' | 'Electrical' | 'Plumbing' | 'HVAC' | 'General' | 'Exterior' | 'Roofing';
 export type ChatRole = 'user' | 'assistant' | 'system';
 export type AIConfidence = 'Low' | 'Medium' | 'High';
@@ -53,13 +53,15 @@ export interface Estimate {
   internal_pdf_url: string;
   version: string;
   last_revision_summary: string;
-  // New fields
   crew_size: number;
   hours_per_day: number;
   subtotal_labor_hours: number;
   estimated_duration_days: number;
   internal_notes: string;
   public_notes: string;
+  // Phase 3
+  clarification_answers_json: string;
+  ai_suggestions_last_json: string;
 }
 
 export interface CostLibraryItem {
@@ -74,7 +76,6 @@ export interface CostLibraryItem {
   unit_label: string;
   notes: string;
   last_updated: string;
-  // New fields
   labor_hours_per_unit: number;
   crew_trade: CrewTrade;
   productivity_note: string;
@@ -138,12 +139,12 @@ export interface RiskTableItem {
   mitigation_note: string;
 }
 
-// ─── New collection types ───
+// ─── Line Items ───
 
 export interface EstimateLineItem {
   id?: string;
   line_id: string;
-  estimate_id: string; // uuid FK to estimates.id
+  estimate_id: string;
   user_id?: string;
   phase: Phase;
   description: string;
@@ -158,8 +159,14 @@ export interface EstimateLineItem {
   line_total: number;
   source: LineItemSource;
   locked: boolean;
+  pending_confirmation: boolean;
+  confidence: AIConfidence;
+  evidence_source: string;
+  notes: string;
   created_at?: string;
 }
+
+// ─── Media ───
 
 export interface EstimateMedia {
   id?: string;
@@ -176,15 +183,18 @@ export interface EstimateMedia {
 export interface EstimateMediaAnalysis {
   id?: string;
   analysis_id: string;
-  media_id: string; // uuid FK to estimate_media.id
+  media_id: string;
   user_id?: string;
   observed_conditions: string;
   suggested_scope_impacts: string;
   risk_flags: string;
   recommended_allowance_range: string;
   ai_confidence: AIConfidence;
+  questions_needed_json: string;
   created_at?: string;
 }
+
+// ─── Chat ───
 
 export interface EstimateChatThread {
   id?: string;
@@ -198,9 +208,43 @@ export interface EstimateChatThread {
 export interface EstimateChatMessage {
   id?: string;
   message_id: string;
-  thread_id: string; // uuid FK to estimate_chat_threads.id
+  thread_id: string;
   user_id?: string;
   role: ChatRole;
   content: string;
+  suggested_changes_json: string;
   created_at?: string;
+}
+
+// ─── AI Suggestion Types ───
+
+export interface SuggestedAction {
+  type: 'ADD_LINE_ITEM' | 'MODIFY_QTY' | 'MODIFY_UNIT_COST' | 'ADD_RISK' | 'ADD_ALLOWANCE' | 'SCOPE_CLARIFICATION';
+  trade: string;
+  description: string;
+  unit: LineItemUnit;
+  qty: number;
+  labor_unit_cost: number | null;
+  material_unit_cost: number | null;
+  allowance_low: number | null;
+  allowance_high: number | null;
+  requires_confirmation: boolean;
+  pending_confirmation: boolean;
+  confidence: AIConfidence;
+  evidence_source: 'Chat' | 'Photo' | 'CostLibraryGap';
+  rationale: string;
+}
+
+export interface SuggestedChanges {
+  meta: {
+    confidence: AIConfidence;
+    evidence_sources: string[];
+    notes: string;
+  };
+  conditional_questions: {
+    question: string;
+    why_it_matters: string;
+    answer_type: 'YesNo' | 'Number' | 'Picklist' | 'Text';
+  }[];
+  actions: SuggestedAction[];
 }

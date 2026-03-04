@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { Estimate, EstimateStatus, ProjectType, FinishLevel, EstimateLineItem, EstimateMedia, EstimateChatThread, EstimateChatMessage } from '@/lib/types';
+import ReactMarkdown from 'react-markdown';
+import type {
+  Estimate, EstimateStatus, ProjectType, FinishLevel, EstimateLineItem,
+  EstimateMedia, EstimateChatThread, EstimateChatMessage, EstimateMediaAnalysis,
+  SuggestedChanges, SuggestedAction, AIConfidence,
+} from '@/lib/types';
 import {
   getEstimate, saveEstimate, nextEstimateId, uid, getCostLibrary, getRiskLibrary,
   getRevisionLogs, saveRevisionLog, updateEstimateStatus, initStore, getEstimateDbId,
@@ -12,6 +17,7 @@ import { runCostEngine } from '@/lib/costEngine';
 import { runRiskEngine } from '@/lib/riskEngine';
 import { generateAssumptions, generateTimeline, generateScopeAI, generateAuditAI } from '@/lib/generators';
 import { generatePublicPDF, generateInternalPDF } from '@/lib/pdfGenerator';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,8 +28,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { EstimateRevisionLog } from '@/lib/types';
 
@@ -39,7 +47,21 @@ const defaultEst: Partial<Estimate> = {
   public_pdf_url: '', internal_pdf_url: '', last_revision_summary: '',
   crew_size: 2, hours_per_day: 8, subtotal_labor_hours: 0, estimated_duration_days: 0,
   internal_notes: '', public_notes: '',
+  clarification_answers_json: '[]', ai_suggestions_last_json: '[]',
 };
+
+const FINISH_MULTS: Record<FinishLevel, number> = { Basic: 1.00, Mid: 1.15, High: 1.30, Luxury: 1.55 };
+
+function parseSuggestedChanges(text: string): SuggestedChanges | null {
+  try {
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) return JSON.parse(jsonMatch[1]);
+    // Try parsing the whole thing
+    const parsed = JSON.parse(text);
+    if (parsed.actions) return parsed;
+    return null;
+  } catch { return null; }
+}
 
 export default function NewEstimate() {
   const { id } = useParams();
@@ -52,15 +74,25 @@ export default function NewEstimate() {
   const [revisions, setRevisions] = useState<EstimateRevisionLog[]>([]);
   const [dbLineItems, setDbLineItems] = useState<EstimateLineItem[]>([]);
   const [media, setMedia] = useState<EstimateMedia[]>([]);
+  const [mediaAnalyses, setMediaAnalyses] = useState<Record<string, EstimateMediaAnalysis>>({});
   const [chatThreads, setChatThreads] = useState<EstimateChatThread[]>([]);
   const [activeThread, setActiveThread] = useState<EstimateChatThread | null>(null);
   const [chatMessages, setChatMessages] = useState<EstimateChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+  const [chatStreaming, setChatStreaming] = useState(false);
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaCaption, setMediaCaption] = useState('');
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [estimateDbId, setEstimateDbId] = useState<string | undefined>();
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [confirmModal, setConfirmModal] = useState(false);
+  const [confirmNotes, setConfirmNotes] = useState('');
+  const [analyzingMedia, setAnalyzingMedia] = useState<string | null>(null);
+  const [convertingMedia, setConvertingMedia] = useState<string | null>(null);
+  const [pendingSuggestions, setPendingSuggestions] = useState<SuggestedChanges | null>(null);
+  const [applyingChanges, setApplyingChanges] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const isEdit = !!id;
 
   useEffect(() => {
@@ -88,6 +120,8 @@ export default function NewEstimate() {
       setLoading(false);
     })();
   }, [id]);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
   const update = (updates: Partial<Estimate>) => setForm(prev => ({ ...prev, ...updates }));
 
@@ -121,13 +155,10 @@ export default function NewEstimate() {
   const generate = async () => {
     if (!validate()) { toast({ title: 'Validation failed', variant: 'destructive' }); return; }
     setGenerating(true);
-
     try {
-      // Ensure estimate is saved first to get DB id
       const estId = form.estimate_id || await nextEstimateId();
       const preEst: Estimate = {
-        ...defaultEst, ...form,
-        estimate_id: estId,
+        ...defaultEst, ...form, estimate_id: estId,
         created_at: form.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       } as Estimate;
@@ -138,43 +169,35 @@ export default function NewEstimate() {
 
       const costLib = await getCostLibrary();
       const riskLib = await getRiskLibrary();
-
-      // Delete old CostLibrary-sourced lines (keep Manual lines)
       await deleteCostLibraryLineItems(dbId);
 
       const costResult = runCostEngine({
-        project_type: form.project_type as ProjectType,
-        sqft: form.sqft!,
-        fixture_count: form.fixture_count || 0,
-        labor_hours: form.labor_hours || 0,
+        project_type: form.project_type as ProjectType, sqft: form.sqft!,
+        fixture_count: form.fixture_count || 0, labor_hours: form.labor_hours || 0,
         finish_level: form.finish_level as FinishLevel,
         finish_materials_included: form.finish_materials_included!,
-        costLibrary: costLib,
-        estimate_db_id: dbId,
-        crew_size: form.crew_size || 2,
-        hours_per_day: form.hours_per_day || 8,
+        costLibrary: costLib, estimate_db_id: dbId,
+        crew_size: form.crew_size || 2, hours_per_day: form.hours_per_day || 8,
       });
 
-      // Upsert generated line items to DB
       await upsertEstimateLineItems(costResult.line_items);
-      setDbLineItems(costResult.line_items);
+
+      // Also keep any existing Manual/AI lines
+      const allItems = await getEstimateLineItems(dbId);
+      setDbLineItems(allItems);
 
       const riskResult = runRiskEngine({ project_type: form.project_type as ProjectType, subtotal: costResult.subtotal, riskLibrary: riskLib });
-
       const marginMult = (1 + (form.overhead_pct || 0.1)) * (1 + (form.profit_pct || 0.2)) * (1 + (form.contingency_pct || 0.1));
       const total_low = Math.round((costResult.subtotal + riskResult.risk_cost_low) * marginMult * 100) / 100;
       const total_high = Math.round((costResult.subtotal + riskResult.risk_cost_high) * marginMult * 100) / 100;
 
       const partial: Partial<Estimate> = {
-        labor_subtotal: costResult.labor_subtotal,
-        material_subtotal: costResult.material_subtotal,
-        subtotal: costResult.subtotal,
-        subtotal_labor_hours: costResult.subtotal_labor_hours,
+        labor_subtotal: costResult.labor_subtotal, material_subtotal: costResult.material_subtotal,
+        subtotal: costResult.subtotal, subtotal_labor_hours: costResult.subtotal_labor_hours,
         estimated_duration_days: costResult.estimated_duration_days,
         line_items_json: JSON.stringify(costResult.legacy_line_items),
         cost_structure_json: JSON.stringify(costResult.cost_structure),
-        risk_cost_low: riskResult.risk_cost_low,
-        risk_cost_high: riskResult.risk_cost_high,
+        risk_cost_low: riskResult.risk_cost_low, risk_cost_high: riskResult.risk_cost_high,
         overall_risk_level: riskResult.overall_risk_level,
         risk_table_json: JSON.stringify(riskResult.risk_table),
         total_low, total_high,
@@ -185,11 +208,8 @@ export default function NewEstimate() {
       merged.created_at = merged.created_at || new Date().toISOString();
       merged.status = 'Ready' as EstimateStatus;
 
-      toast({ title: 'Running AI analysis...', description: 'Generating scope & audit via AI' });
-      const [scope, audit] = await Promise.all([
-        generateScopeAI(merged),
-        generateAuditAI({ ...merged, estimate_id: estId }),
-      ]);
+      toast({ title: 'Running AI analysis...' });
+      const [scope, audit] = await Promise.all([generateScopeAI(merged), generateAuditAI({ ...merged, estimate_id: estId })]);
       merged.ai_scope = scope;
       merged.ai_price_audit_summary = audit;
 
@@ -200,26 +220,52 @@ export default function NewEstimate() {
     } catch (e) {
       console.error('Generate error:', e);
       toast({ title: 'Generation error', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setGenerating(false);
-    }
+    } finally { setGenerating(false); }
   };
 
-  const createRevision = async () => {
-    const summary = prompt('Change summary (required):');
-    if (!summary) return;
+  // ─── Deterministic recompute from current line items ───
+  const recomputeFromLineItems = async (items: EstimateLineItem[]) => {
+    const labor_subtotal = Math.round(items.reduce((s, l) => s + l.labor_total, 0) * 100) / 100;
+    const material_subtotal = Math.round(items.reduce((s, l) => s + l.material_total, 0) * 100) / 100;
+    const subtotal = Math.round((labor_subtotal + material_subtotal) * 100) / 100;
+    const subtotal_labor_hours = Math.round(items.reduce((s, l) => s + l.labor_hours_total, 0) * 100) / 100;
+    const crewSize = form.crew_size || 2;
+    const hoursPerDay = form.hours_per_day || 8;
+    const estimated_duration_days = subtotal_labor_hours > 0 ? Math.ceil(subtotal_labor_hours / (crewSize * hoursPerDay)) : 0;
+
+    const riskLib = await getRiskLibrary();
+    const riskResult = runRiskEngine({ project_type: form.project_type as ProjectType, subtotal, riskLibrary: riskLib });
+    const marginMult = (1 + (form.overhead_pct || 0.1)) * (1 + (form.profit_pct || 0.2)) * (1 + (form.contingency_pct || 0.1));
+    const total_low = Math.round((subtotal + riskResult.risk_cost_low) * marginMult * 100) / 100;
+    const total_high = Math.round((subtotal + riskResult.risk_cost_high) * marginMult * 100) / 100;
+
+    const updates: Partial<Estimate> = {
+      labor_subtotal, material_subtotal, subtotal, subtotal_labor_hours, estimated_duration_days,
+      risk_cost_low: riskResult.risk_cost_low, risk_cost_high: riskResult.risk_cost_high,
+      overall_risk_level: riskResult.overall_risk_level, risk_table_json: JSON.stringify(riskResult.risk_table),
+      total_low, total_high,
+    };
+    const est: Estimate = { ...defaultEst, ...form, ...updates, updated_at: new Date().toISOString() } as Estimate;
+    await saveEstimate(est);
+    setForm(est);
+    return est;
+  };
+
+  const createRevision = async (summary?: string) => {
+    const changeSummary = summary || prompt('Change summary (required):');
+    if (!changeSummary) return;
     const prevVersion = form.version || 'v1.0';
     const parts = prevVersion.replace('v', '').split('.');
     const newVersion = `v${parts[0]}.${parseInt(parts[1] || '0') + 1}`;
     await saveRevisionLog({
       id: uid(), estimate_id: form.estimate_id!, created_at: new Date().toISOString(),
-      version: prevVersion, change_summary: summary, snapshot_json: JSON.stringify(form),
+      version: prevVersion, change_summary: changeSummary, snapshot_json: JSON.stringify(form),
       delta_low: 0, delta_high: 0,
     });
-    update({ version: newVersion, last_revision_summary: summary });
+    update({ version: newVersion, last_revision_summary: changeSummary });
     const revs = await getRevisionLogs(form.estimate_id);
     setRevisions(revs);
-    toast({ title: 'Revision created', description: newVersion });
+    return newVersion;
   };
 
   const duplicate = async () => {
@@ -256,7 +302,74 @@ export default function NewEstimate() {
     setMedia(prev => prev.filter(m => m.media_id !== mediaId));
   };
 
-  // ─── Chat handlers ───
+  const analyzePhoto = async (m: EstimateMedia) => {
+    setAnalyzingMedia(m.media_id);
+    try {
+      const { data, error } = await supabase.functions.invoke('estimate-ai', {
+        body: { action: 'photo_analyze', data: { image_url: m.file_url, caption: m.caption, project_type: form.project_type } },
+      });
+      if (error) throw error;
+      const content = data?.content || '';
+      // Parse JSON from response
+      let parsed: any = {};
+      try {
+        const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
+        parsed = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content);
+      } catch { parsed = { observed_conditions: content, suggested_scope_impacts: '', risk_flags: '', recommended_allowance_range: '', ai_confidence: 'Medium', questions_needed: [] }; }
+
+      const analysis: EstimateMediaAnalysis = {
+        analysis_id: uid(), media_id: m.id || m.media_id,
+        observed_conditions: parsed.observed_conditions || '',
+        suggested_scope_impacts: parsed.suggested_scope_impacts || '',
+        risk_flags: parsed.risk_flags || '',
+        recommended_allowance_range: parsed.recommended_allowance_range || '',
+        ai_confidence: parsed.ai_confidence || 'Medium',
+        questions_needed_json: JSON.stringify(parsed.questions_needed || []),
+      };
+
+      // Save to DB
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      await supabase.from('estimate_media_analysis').upsert({
+        analysis_id: analysis.analysis_id, media_id: analysis.media_id,
+        user_id: userId, observed_conditions: analysis.observed_conditions,
+        suggested_scope_impacts: analysis.suggested_scope_impacts,
+        risk_flags: analysis.risk_flags, recommended_allowance_range: analysis.recommended_allowance_range,
+        ai_confidence: analysis.ai_confidence, questions_needed_json: analysis.questions_needed_json,
+      }, { onConflict: 'analysis_id' });
+
+      setMediaAnalyses(prev => ({ ...prev, [m.media_id]: analysis }));
+      toast({ title: 'Photo analyzed' });
+    } catch (e) {
+      console.error('Photo analysis error:', e);
+      toast({ title: 'Analysis failed', description: e instanceof Error ? e.message : 'Unknown', variant: 'destructive' });
+    } finally { setAnalyzingMedia(null); }
+  };
+
+  const convertPhotoToSuggestions = async (m: EstimateMedia) => {
+    const analysis = mediaAnalyses[m.media_id];
+    if (!analysis) { toast({ title: 'Analyze photo first', variant: 'destructive' }); return; }
+    setConvertingMedia(m.media_id);
+    try {
+      const { data, error } = await supabase.functions.invoke('estimate-ai', {
+        body: {
+          action: 'photo_convert', data: {
+            analysis, clarification_answers: form.clarification_answers_json ? JSON.parse(form.clarification_answers_json) : [],
+            project_type: form.project_type, sqft: form.sqft, fixture_count: form.fixture_count,
+            finish_level: form.finish_level,
+            existing_items_summary: dbLineItems.map(li => `${li.description} (${li.qty} ${li.unit})`).join(', '),
+          },
+        },
+      });
+      if (error) throw error;
+      const suggestions = parseSuggestedChanges(data?.content || '');
+      if (suggestions) { setPendingSuggestions(suggestions); toast({ title: 'Suggestions ready — review & apply' }); }
+      else toast({ title: 'Could not parse suggestions', variant: 'destructive' });
+    } catch (e) {
+      toast({ title: 'Conversion failed', description: e instanceof Error ? e.message : 'Unknown', variant: 'destructive' });
+    } finally { setConvertingMedia(null); }
+  };
+
+  // ─── Chat handlers (streaming) ───
   const loadThread = useCallback(async (thread: EstimateChatThread) => {
     setActiveThread(thread);
     if (thread.id) {
@@ -267,7 +380,7 @@ export default function NewEstimate() {
 
   const newThread = async () => {
     if (!estimateDbId) return;
-    const title = prompt('Thread title:') || 'New Thread';
+    const title = 'Estimator Assistant';
     const thread: EstimateChatThread = { thread_id: uid(), estimate_id: estimateDbId, title };
     const dbId = await createChatThread(thread);
     thread.id = dbId;
@@ -276,18 +389,203 @@ export default function NewEstimate() {
   };
 
   const sendMessage = async () => {
-    if (!chatInput.trim() || !activeThread?.id) return;
-    const msg: EstimateChatMessage = {
-      message_id: uid(), thread_id: activeThread.id, role: 'user', content: chatInput,
+    if (!chatInput.trim() || !activeThread?.id || chatStreaming) return;
+    const userMsg: EstimateChatMessage = {
+      message_id: uid(), thread_id: activeThread.id, role: 'user', content: chatInput, suggested_changes_json: '',
     };
-    await saveChatMessage(msg);
-    setChatMessages(prev => [...prev, msg]);
+    await saveChatMessage(userMsg);
+    setChatMessages(prev => [...prev, userMsg]);
     setChatInput('');
+    setChatStreaming(true);
+
+    const context = {
+      project_type: form.project_type, sqft: form.sqft, fixture_count: form.fixture_count,
+      finish_level: form.finish_level, labor_subtotal: form.labor_subtotal,
+      material_subtotal: form.material_subtotal, subtotal: form.subtotal,
+      total_low: form.total_low, total_high: form.total_high,
+      line_items: dbLineItems.map(li => ({ description: li.description, qty: li.qty, unit: li.unit, line_total: li.line_total, source: li.source })),
+    };
+
+    const allMsgs = [...chatMessages, userMsg].map(m => ({ role: m.role, content: m.content }));
+
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ action: 'chat', data: { messages: allMsgs, context } }),
+      });
+
+      if (!resp.ok || !resp.body) throw new Error('Stream failed');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let assistantContent = '';
+      const assistantMsgId = uid();
+
+      // Create initial assistant message
+      setChatMessages(prev => [...prev, { message_id: assistantMsgId, thread_id: activeThread.id!, role: 'assistant', content: '', suggested_changes_json: '' }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIdx: number;
+        while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+          let line = buffer.slice(0, newlineIdx);
+          buffer = buffer.slice(newlineIdx + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (line.startsWith(':') || line.trim() === '' || !line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assistantContent += delta;
+              setChatMessages(prev => prev.map(m => m.message_id === assistantMsgId ? { ...m, content: assistantContent } : m));
+            }
+          } catch { /* partial json, skip */ }
+        }
+      }
+
+      // Parse suggestions from response
+      const suggestions = parseSuggestedChanges(assistantContent);
+      const suggestionsJson = suggestions ? JSON.stringify(suggestions) : '';
+
+      // Save assistant message to DB
+      const assistantMsg: EstimateChatMessage = {
+        message_id: assistantMsgId, thread_id: activeThread.id!, role: 'assistant',
+        content: assistantContent, suggested_changes_json: suggestionsJson,
+      };
+      await saveChatMessage(assistantMsg);
+      setChatMessages(prev => prev.map(m => m.message_id === assistantMsgId ? assistantMsg : m));
+
+      if (suggestions) setPendingSuggestions(suggestions);
+    } catch (e) {
+      console.error('Chat error:', e);
+      toast({ title: 'Chat error', description: e instanceof Error ? e.message : 'Unknown', variant: 'destructive' });
+    } finally { setChatStreaming(false); }
+  };
+
+  // ─── Apply Suggestions (CRITICAL) ───
+  const applySuggestions = async () => {
+    if (!pendingSuggestions || !estimateDbId) return;
+    setApplyingChanges(true);
+    try {
+      // 1. Create revision log snapshot
+      await createRevision('AI suggestions applied');
+
+      const newItems: EstimateLineItem[] = [];
+
+      for (const action of pendingSuggestions.actions) {
+        if (action.type === 'ADD_LINE_ITEM' || action.type === 'ADD_ALLOWANCE') {
+          const isAllowance = action.type === 'ADD_ALLOWANCE';
+          const laborCost = action.labor_unit_cost ?? 0;
+          const matCost = action.material_unit_cost ?? (isAllowance ? ((action.allowance_low || 0) + (action.allowance_high || 0)) / 2 : 0);
+          const qty = isAllowance ? 1 : (action.qty || 1);
+          const labor_total = Math.round(qty * laborCost * 100) / 100;
+          const material_total = Math.round(qty * matCost * 100) / 100;
+          const laborHoursPerUnit = laborCost > 0 ? Math.round((laborCost / 80) * 10000) / 10000 : 0;
+
+          let notes = action.rationale || '';
+          if (isAllowance && (action.allowance_low || action.allowance_high)) {
+            notes += ` [Allowance range: $${action.allowance_low || 0} – $${action.allowance_high || 0}]`;
+          }
+          if (laborCost === 0 && matCost === 0) notes += ' [TBD allowance — costs unknown]';
+
+          newItems.push({
+            line_id: `AI-${uid()}`,
+            estimate_id: estimateDbId,
+            phase: 'Other',
+            description: isAllowance ? `Allowance: ${action.description}` : action.description,
+            unit: isAllowance ? 'lump_sum' : (action.unit || 'ea'),
+            qty,
+            labor_unit_cost: laborCost,
+            material_unit_cost: matCost,
+            labor_hours_per_unit: laborHoursPerUnit,
+            labor_hours_total: Math.round(qty * laborHoursPerUnit * 100) / 100,
+            labor_total, material_total,
+            line_total: Math.round((labor_total + material_total) * 100) / 100,
+            source: action.evidence_source === 'Photo' ? 'PhotoAI' : 'AI Draft',
+            locked: true,
+            pending_confirmation: true,
+            confidence: action.confidence || 'Medium',
+            evidence_source: action.evidence_source || 'Chat',
+            notes,
+          });
+        }
+        // MODIFY_QTY / MODIFY_UNIT_COST: create proposed change row instead of editing existing
+        if (action.type === 'MODIFY_QTY' || action.type === 'MODIFY_UNIT_COST') {
+          newItems.push({
+            line_id: `AI-${uid()}`,
+            estimate_id: estimateDbId,
+            phase: 'Other',
+            description: `[Proposed Change] ${action.description}`,
+            unit: action.unit || 'ea',
+            qty: action.qty || 0,
+            labor_unit_cost: action.labor_unit_cost ?? 0,
+            material_unit_cost: action.material_unit_cost ?? 0,
+            labor_hours_per_unit: 0,
+            labor_hours_total: 0,
+            labor_total: 0, material_total: 0, line_total: 0,
+            source: 'AI Draft', locked: true, pending_confirmation: true,
+            confidence: action.confidence || 'Medium',
+            evidence_source: action.evidence_source || 'Chat',
+            notes: `${action.type}: ${action.rationale || ''}`,
+          });
+        }
+      }
+
+      if (newItems.length > 0) {
+        await upsertEstimateLineItems(newItems);
+        const allItems = await getEstimateLineItems(estimateDbId);
+        setDbLineItems(allItems);
+        await recomputeFromLineItems(allItems);
+      }
+
+      // Save suggestions to estimate
+      update({ ai_suggestions_last_json: JSON.stringify(pendingSuggestions) });
+
+      setPendingSuggestions(null);
+      toast({ title: `${newItems.length} line items added`, description: 'Locked rows — confirm to unlock.' });
+    } catch (e) {
+      toast({ title: 'Apply failed', description: e instanceof Error ? e.message : 'Unknown', variant: 'destructive' });
+    } finally { setApplyingChanges(false); }
+  };
+
+  // ─── Row confirmation ───
+  const toggleRowSelection = (lineId: string) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId); else next.add(lineId);
+      return next;
+    });
+  };
+
+  const confirmSelectedRows = async () => {
+    if (!estimateDbId || selectedRows.size === 0) return;
+    const updatedItems = dbLineItems.map(li => {
+      if (selectedRows.has(li.line_id)) {
+        return { ...li, pending_confirmation: false, locked: false, notes: li.notes ? `${li.notes} | Confirmed: ${confirmNotes}` : `Confirmed: ${confirmNotes}` };
+      }
+      return li;
+    });
+    await upsertEstimateLineItems(updatedItems.filter(li => selectedRows.has(li.line_id)));
+    setDbLineItems(updatedItems);
+    setSelectedRows(new Set());
+    setConfirmModal(false);
+    setConfirmNotes('');
+    await recomputeFromLineItems(updatedItems);
+    toast({ title: `${selectedRows.size} rows confirmed` });
   };
 
   const costStructure = form.cost_structure_json ? JSON.parse(form.cost_structure_json) : [];
   const riskTable = form.risk_table_json ? JSON.parse(form.risk_table_json) : [];
   const fmt = (n?: number) => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const hasPendingRows = dbLineItems.some(li => li.pending_confirmation);
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
@@ -349,23 +647,14 @@ export default function NewEstimate() {
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Crew Size</Label>
-                <Input type="number" value={form.crew_size || 2} onChange={e => update({ crew_size: Number(e.target.value) })} />
-              </div>
-              <div>
-                <Label>Hours/Day</Label>
-                <Input type="number" value={form.hours_per_day || 8} onChange={e => update({ hours_per_day: Number(e.target.value) })} />
-              </div>
+              <div><Label>Crew Size</Label><Input type="number" value={form.crew_size || 2} onChange={e => update({ crew_size: Number(e.target.value) })} /></div>
+              <div><Label>Hours/Day</Label><Input type="number" value={form.hours_per_day || 8} onChange={e => update({ hours_per_day: Number(e.target.value) })} /></div>
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.finish_materials_included} onCheckedChange={v => update({ finish_materials_included: v })} />
               <Label>Finish Materials Included</Label>
             </div>
-            <div>
-              <Label>Project Name</Label>
-              <Input value={form.project_name || ''} onChange={e => update({ project_name: e.target.value })} />
-            </div>
+            <div><Label>Project Name</Label><Input value={form.project_name || ''} onChange={e => update({ project_name: e.target.value })} /></div>
           </CardContent>
         </Card>
 
@@ -418,12 +707,12 @@ export default function NewEstimate() {
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={saveDraft}>Save Draft</Button>
-        <Button variant="gold" onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
+        <Button onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
         {form.subtotal! > 0 && (
           <>
             <Button variant="outline" onClick={() => generatePublicPDF(form as Estimate)}><FileDown className="mr-1 h-4 w-4" />Public PDF</Button>
             <Button variant="outline" onClick={() => generateInternalPDF(form as Estimate)}><FileDown className="mr-1 h-4 w-4" />Internal PDF</Button>
-            <Button variant="outline" onClick={createRevision}>Create Revision</Button>
+            <Button variant="outline" onClick={() => createRevision()}>Create Revision</Button>
             <Button variant="outline" onClick={duplicate}><Copy className="mr-1 h-4 w-4" />Duplicate</Button>
           </>
         )}
@@ -432,21 +721,9 @@ export default function NewEstimate() {
       {/* Status Workflow Buttons */}
       {form.estimate_id && form.status !== 'Draft' && (
         <div className="flex flex-wrap gap-2">
-          {form.status !== 'Sent' && (
-            <Button variant="outline" onClick={() => setStatus('Sent')} className="text-blue-600 border-blue-300 hover:bg-blue-50">
-              <Send className="mr-1 h-4 w-4" />Mark as Sent
-            </Button>
-          )}
-          {form.status !== 'Accepted' && (
-            <Button variant="outline" onClick={() => setStatus('Accepted')} className="text-green-600 border-green-300 hover:bg-green-50">
-              <CheckCircle className="mr-1 h-4 w-4" />Mark as Accepted
-            </Button>
-          )}
-          {form.status !== 'Rejected' && (
-            <Button variant="outline" onClick={() => setStatus('Rejected')} className="text-red-600 border-red-300 hover:bg-red-50">
-              <XCircle className="mr-1 h-4 w-4" />Mark as Rejected
-            </Button>
-          )}
+          {form.status !== 'Sent' && <Button variant="outline" onClick={() => setStatus('Sent')} className="text-blue-600 border-blue-300 hover:bg-blue-50"><Send className="mr-1 h-4 w-4" />Mark as Sent</Button>}
+          {form.status !== 'Accepted' && <Button variant="outline" onClick={() => setStatus('Accepted')} className="text-green-600 border-green-300 hover:bg-green-50"><CheckCircle className="mr-1 h-4 w-4" />Mark as Accepted</Button>}
+          {form.status !== 'Rejected' && <Button variant="outline" onClick={() => setStatus('Rejected')} className="text-red-600 border-red-300 hover:bg-red-50"><XCircle className="mr-1 h-4 w-4" />Mark as Rejected</Button>}
         </div>
       )}
 
@@ -458,13 +735,51 @@ export default function NewEstimate() {
             <TabsTrigger value="costs">Cost Summary</TabsTrigger>
             <TabsTrigger value="risks">Risk Analysis</TabsTrigger>
             <TabsTrigger value="scope">Scope & Assumptions</TabsTrigger>
-            <TabsTrigger value="media">Media</TabsTrigger>
-            <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="chat">Estimator Chat</TabsTrigger>
+            <TabsTrigger value="media">Photos & Analysis</TabsTrigger>
             <TabsTrigger value="audit">Audit & History</TabsTrigger>
           </TabsList>
 
-          {/* G) LINE ITEMS TAB with full traceability */}
+          {/* LINE ITEMS TAB */}
           <TabsContent value="line-items" className="space-y-4">
+            {/* AI suggestion banner */}
+            {hasPendingRows && (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span className="text-amber-800">AI suggestions added as <strong>Locked</strong> rows until confirmed.</span>
+              </div>
+            )}
+
+            {/* Pending suggestions to apply */}
+            {pendingSuggestions && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Sparkles className="h-4 w-4" />AI Suggestions Ready ({pendingSuggestions.actions.length} actions)</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {pendingSuggestions.conditional_questions.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Questions to consider:</p>
+                      {pendingSuggestions.conditional_questions.map((q, i) => (
+                        <p key={i} className="text-sm">• {q.question} <span className="text-xs text-muted-foreground">({q.why_it_matters})</span></p>
+                      ))}
+                    </div>
+                  )}
+                  {pendingSuggestions.actions.map((a, i) => (
+                    <div key={i} className="text-sm flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{a.type}</Badge>
+                      <span>{a.description}</span>
+                      <Badge variant={a.confidence === 'High' ? 'default' : a.confidence === 'Low' ? 'destructive' : 'secondary'} className="text-xs">{a.confidence}</Badge>
+                    </div>
+                  ))}
+                  <div className="flex gap-2 pt-2">
+                    <Button size="sm" onClick={applySuggestions} disabled={applyingChanges}>
+                      {applyingChanges ? 'Applying...' : 'Review & Apply Suggestions'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setPendingSuggestions(null)}>Dismiss</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               <MiniCard label="Labor" value={fmt(form.labor_subtotal)} />
               <MiniCard label="Materials" value={fmt(form.material_subtotal)} />
@@ -472,6 +787,15 @@ export default function NewEstimate() {
               <MiniCard label="Est. Duration" value={`${form.estimated_duration_days || 0} days`} />
               <MiniCard label="Range" value={`${fmt(form.total_low)} – ${fmt(form.total_high)}`} />
             </div>
+
+            {/* Row actions */}
+            {selectedRows.size > 0 && (
+              <div className="flex gap-2 items-center">
+                <Badge variant="secondary">{selectedRows.size} selected</Badge>
+                <Button size="sm" onClick={() => setConfirmModal(true)}><CheckCircle className="mr-1 h-3 w-3" />Confirm Selected</Button>
+              </div>
+            )}
+
             <Card>
               <CardHeader><CardTitle className="text-sm">Estimate Line Items</CardTitle></CardHeader>
               <CardContent>
@@ -479,43 +803,53 @@ export default function NewEstimate() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8"></TableHead>
                         <TableHead>Phase</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
                         <TableHead>Unit</TableHead>
                         <TableHead className="text-right">Labor $/u</TableHead>
                         <TableHead className="text-right">Mat $/u</TableHead>
-                        <TableHead className="text-right">Hrs/u</TableHead>
                         <TableHead className="text-right">Hrs Total</TableHead>
                         <TableHead className="text-right">Labor $</TableHead>
                         <TableHead className="text-right">Mat $</TableHead>
                         <TableHead className="text-right">Line Total</TableHead>
                         <TableHead>Source</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {dbLineItems.map((li, i) => (
-                        <TableRow key={li.line_id || i}>
+                        <TableRow key={li.line_id || i} className={li.pending_confirmation ? 'bg-amber-50/50' : ''}>
+                          <TableCell>
+                            {(li.pending_confirmation || li.locked) && (
+                              <Checkbox checked={selectedRows.has(li.line_id)} onCheckedChange={() => toggleRowSelection(li.line_id)} />
+                            )}
+                          </TableCell>
                           <TableCell><Badge variant="outline" className="text-xs">{li.phase}</Badge></TableCell>
-                          <TableCell className="font-medium">{li.description}</TableCell>
+                          <TableCell className="font-medium">
+                            {li.description}
+                            {li.notes && <p className="text-xs text-muted-foreground mt-0.5">{li.notes}</p>}
+                          </TableCell>
                           <TableCell className="text-right">{li.qty}</TableCell>
                           <TableCell>{li.unit}</TableCell>
                           <TableCell className="text-right">{fmt(li.labor_unit_cost)}</TableCell>
                           <TableCell className="text-right">{fmt(li.material_unit_cost)}</TableCell>
-                          <TableCell className="text-right">{li.labor_hours_per_unit.toFixed(2)}</TableCell>
                           <TableCell className="text-right">{li.labor_hours_total.toFixed(2)}</TableCell>
                           <TableCell className="text-right">{fmt(li.labor_total)}</TableCell>
                           <TableCell className="text-right">{fmt(li.material_total)}</TableCell>
                           <TableCell className="text-right font-bold">{fmt(li.line_total)}</TableCell>
                           <TableCell>
-                            <Badge variant={li.source === 'CostLibrary' ? 'default' : li.source === 'Manual' ? 'secondary' : 'outline'} className="text-xs">
-                              {li.source}
-                            </Badge>
+                            <SourcePill source={li.source} confidence={li.confidence} evidenceSource={li.evidence_source} />
+                          </TableCell>
+                          <TableCell>
+                            {li.locked && <Lock className="h-3 w-3 text-amber-600 inline mr-1" />}
+                            {li.pending_confirmation && <Badge variant="destructive" className="text-xs">Pending</Badge>}
                           </TableCell>
                         </TableRow>
                       ))}
                       {dbLineItems.length === 0 && (
-                        <TableRow><TableCell colSpan={12} className="text-center py-6 text-muted-foreground">No line items. Click Generate to create from Cost Library.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={13} className="text-center py-6 text-muted-foreground">No line items. Click Generate to create from Cost Library.</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -523,7 +857,7 @@ export default function NewEstimate() {
               </CardContent>
             </Card>
 
-            {/* How Totals Were Computed - Traceability */}
+            {/* How Totals Were Computed */}
             <Collapsible open={traceOpen} onOpenChange={setTraceOpen}>
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" size="sm"><ChevronDown className={`mr-1 h-4 w-4 transition-transform ${traceOpen ? 'rotate-180' : ''}`} />How totals were computed</Button>
@@ -552,6 +886,7 @@ export default function NewEstimate() {
             </Collapsible>
           </TabsContent>
 
+          {/* COSTS TAB */}
           <TabsContent value="costs" className="space-y-4">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MiniCard label="Labor" value={fmt(form.labor_subtotal)} />
@@ -574,6 +909,7 @@ export default function NewEstimate() {
             </Card>
           </TabsContent>
 
+          {/* RISKS TAB */}
           <TabsContent value="risks" className="space-y-4">
             <div className="grid grid-cols-3 gap-3">
               <MiniCard label="Risk Level" value={form.overall_risk_level || 'Low'} />
@@ -594,6 +930,7 @@ export default function NewEstimate() {
             </Card>
           </TabsContent>
 
+          {/* SCOPE TAB */}
           <TabsContent value="scope" className="space-y-4">
             <Card>
               <CardHeader><CardTitle className="text-sm">Assumptions (editable)</CardTitle></CardHeader>
@@ -601,7 +938,7 @@ export default function NewEstimate() {
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-sm">AI Scope</CardTitle><Button variant="ghost" size="sm" onClick={() => navigator.clipboard.writeText(form.ai_scope || '')}><Copy className="h-3 w-3 mr-1" />Copy</Button></CardHeader>
-              <CardContent><pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md max-h-96 overflow-y-auto">{form.ai_scope}</pre></CardContent>
+              <CardContent><div className="prose prose-sm max-w-none bg-muted p-4 rounded-md max-h-96 overflow-y-auto"><ReactMarkdown>{form.ai_scope || ''}</ReactMarkdown></div></CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-sm">Timeline</CardTitle></CardHeader>
@@ -609,10 +946,68 @@ export default function NewEstimate() {
             </Card>
           </TabsContent>
 
-          {/* MEDIA TAB */}
+          {/* ESTIMATOR CHAT TAB */}
+          <TabsContent value="chat" className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-sm">Estimator Assistant</CardTitle>
+                <Button variant="outline" size="sm" onClick={newThread} disabled={!estimateDbId}><Plus className="h-3 w-3 mr-1" />New Thread</Button>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-4 min-h-[400px]">
+                  {/* Thread list */}
+                  <div className="w-48 space-y-1 border-r pr-4">
+                    {chatThreads.map(t => (
+                      <Button key={t.thread_id} variant={activeThread?.thread_id === t.thread_id ? 'default' : 'ghost'} size="sm" className="w-full justify-start text-left" onClick={() => loadThread(t)}>
+                        <MessageSquare className="h-3 w-3 mr-1 shrink-0" /><span className="truncate">{t.title}</span>
+                      </Button>
+                    ))}
+                    {chatThreads.length === 0 && <p className="text-xs text-muted-foreground">No threads yet. Click "New Thread" to start.</p>}
+                  </div>
+                  {/* Messages */}
+                  <div className="flex-1 flex flex-col">
+                    {activeThread ? (
+                      <>
+                        <div className="flex-1 space-y-3 overflow-y-auto max-h-[360px] pr-2">
+                          {chatMessages.map(m => (
+                            <div key={m.message_id} className={`p-3 rounded-md text-sm ${m.role === 'user' ? 'bg-primary/10 ml-8' : m.role === 'assistant' ? 'bg-muted mr-4' : 'bg-muted/50 text-xs italic'}`}>
+                              <span className="font-medium text-xs text-muted-foreground uppercase">{m.role}</span>
+                              <div className="mt-1 prose prose-sm max-w-none">
+                                <ReactMarkdown>{m.content}</ReactMarkdown>
+                              </div>
+                              {m.role === 'assistant' && m.suggested_changes_json && (() => {
+                                const sc = parseSuggestedChanges(m.content);
+                                return sc && sc.actions.length > 0 ? (
+                                  <Button size="sm" variant="outline" className="mt-2" onClick={() => setPendingSuggestions(sc)}>
+                                    <Sparkles className="h-3 w-3 mr-1" />Review {sc.actions.length} Suggestions
+                                  </Button>
+                                ) : null;
+                              })()}
+                            </div>
+                          ))}
+                          {chatMessages.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Ask the AI assistant about this estimate. It will suggest structured changes you can review and apply.</p>}
+                          <div ref={chatEndRef} />
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <Input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Ask about scope, costs, missing items..." onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()} disabled={chatStreaming} />
+                          <Button onClick={sendMessage} disabled={!chatInput.trim() || chatStreaming}>{chatStreaming ? '...' : <Send className="h-4 w-4" />}</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center">
+                        <p className="text-sm text-muted-foreground">Select or create a thread to start chatting</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* PHOTOS & ANALYSIS TAB */}
           <TabsContent value="media" className="space-y-4">
             <Card>
-              <CardHeader><CardTitle className="text-sm">Estimate Media</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-sm">Photos & Analysis</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 {estimateDbId && (
                   <div className="flex gap-2 items-end flex-wrap">
@@ -627,77 +1022,80 @@ export default function NewEstimate() {
                     <Button onClick={addMedia} disabled={!mediaUrl}><ImagePlus className="mr-1 h-4 w-4" />Add</Button>
                   </div>
                 )}
-                {media.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No media attached yet.</p>}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {media.map(m => (
-                    <Card key={m.media_id}>
-                      <CardContent className="pt-3 space-y-2">
-                        {m.file_url && (
-                          <img src={m.file_url} alt={m.caption} className="w-full h-32 object-cover rounded-md" onError={e => (e.currentTarget.style.display = 'none')} />
-                        )}
-                        <p className="text-sm font-medium">{m.caption || 'No caption'}</p>
-                        <div className="flex gap-2 text-xs">
-                          <Badge variant={m.include_in_internal_pdf ? 'default' : 'outline'}>Internal</Badge>
-                          <Badge variant={m.include_in_public_pdf ? 'default' : 'outline'}>Public</Badge>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => removeMedia(m.media_id)}><Trash2 className="h-3 w-3 mr-1" />Remove</Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* CHAT TAB */}
-          <TabsContent value="chat" className="space-y-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-sm">Estimate Chat Threads</CardTitle>
-                <Button variant="outline" size="sm" onClick={newThread} disabled={!estimateDbId}><Plus className="h-3 w-3 mr-1" />New Thread</Button>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-4">
-                  {/* Thread list */}
-                  <div className="w-48 space-y-1 border-r pr-4">
-                    {chatThreads.map(t => (
-                      <Button key={t.thread_id} variant={activeThread?.thread_id === t.thread_id ? 'default' : 'ghost'} size="sm" className="w-full justify-start text-left" onClick={() => loadThread(t)}>
-                        <MessageSquare className="h-3 w-3 mr-1 shrink-0" />{t.title}
-                      </Button>
-                    ))}
-                    {chatThreads.length === 0 && <p className="text-xs text-muted-foreground">No threads yet</p>}
-                  </div>
-                  {/* Messages */}
-                  <div className="flex-1 space-y-3">
-                    {activeThread ? (
-                      <>
-                        <div className="space-y-2 max-h-72 overflow-y-auto">
-                          {chatMessages.map(m => (
-                            <div key={m.message_id} className={`p-2 rounded-md text-sm ${m.role === 'user' ? 'bg-primary/10 ml-8' : m.role === 'assistant' ? 'bg-muted mr-8' : 'bg-muted/50 text-xs italic'}`}>
-                              <span className="font-medium text-xs text-muted-foreground">{m.role}</span>
-                              <p className="mt-1">{m.content}</p>
+                {media.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No photos attached yet.</p>}
+                <div className="space-y-4">
+                  {media.map(m => {
+                    const analysis = mediaAnalyses[m.media_id];
+                    const questions = analysis ? (() => { try { return JSON.parse(analysis.questions_needed_json); } catch { return []; } })() : [];
+                    return (
+                      <Card key={m.media_id}>
+                        <CardContent className="pt-4 space-y-3">
+                          <div className="flex gap-4">
+                            {m.file_url && (
+                              <img src={m.file_url} alt={m.caption} className="w-40 h-28 object-cover rounded-md shrink-0" onError={e => (e.currentTarget.style.display = 'none')} />
+                            )}
+                            <div className="flex-1 space-y-2">
+                              <p className="font-medium">{m.caption || 'No caption'}</p>
+                              <div className="flex gap-2 text-xs">
+                                <Badge variant={m.include_in_internal_pdf ? 'default' : 'outline'}>Internal PDF</Badge>
+                                <Badge variant={m.include_in_public_pdf ? 'default' : 'outline'}>Public PDF</Badge>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => analyzePhoto(m)} disabled={analyzingMedia === m.media_id}>
+                                  <Camera className="h-3 w-3 mr-1" />{analyzingMedia === m.media_id ? 'Analyzing...' : 'Analyze Photo'}
+                                </Button>
+                                {analysis && (
+                                  <Button size="sm" variant="outline" onClick={() => convertPhotoToSuggestions(m)} disabled={convertingMedia === m.media_id}>
+                                    <Sparkles className="h-3 w-3 mr-1" />{convertingMedia === m.media_id ? 'Converting...' : 'Convert to Line Items'}
+                                  </Button>
+                                )}
+                                <Button variant="ghost" size="sm" onClick={() => removeMedia(m.media_id)}><Trash2 className="h-3 w-3" /></Button>
+                              </div>
                             </div>
-                          ))}
-                          {chatMessages.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No messages yet</p>}
-                        </div>
-                        <div className="flex gap-2">
-                          <Input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Type a message..." onKeyDown={e => e.key === 'Enter' && sendMessage()} />
-                          <Button onClick={sendMessage} disabled={!chatInput.trim()}><Send className="h-4 w-4" /></Button>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-8">Select or create a thread to start chatting</p>
-                    )}
-                  </div>
+                          </div>
+
+                          {analysis && (
+                            <div className="border-t pt-3 space-y-2 text-sm">
+                              <div className="flex items-center gap-2">
+                                <Badge variant={analysis.ai_confidence === 'High' ? 'default' : analysis.ai_confidence === 'Low' ? 'destructive' : 'secondary'}>
+                                  Confidence: {analysis.ai_confidence}
+                                </Badge>
+                              </div>
+                              {analysis.observed_conditions && <div><p className="text-xs font-medium text-muted-foreground">Observed Conditions</p><p>{analysis.observed_conditions}</p></div>}
+                              {analysis.suggested_scope_impacts && <div><p className="text-xs font-medium text-muted-foreground">Scope Impacts</p><p>{analysis.suggested_scope_impacts}</p></div>}
+                              {analysis.risk_flags && <div><p className="text-xs font-medium text-muted-foreground">Risk Flags</p><p>{analysis.risk_flags}</p></div>}
+                              {analysis.recommended_allowance_range && <div><p className="text-xs font-medium text-muted-foreground">Allowance Range</p><p>{analysis.recommended_allowance_range}</p></div>}
+
+                              {questions.length > 0 && (
+                                <div className="border-t pt-2 space-y-2">
+                                  <p className="text-xs font-medium text-muted-foreground">Clarification Checklist</p>
+                                  {questions.map((q: any, qi: number) => (
+                                    <div key={qi} className="flex items-start gap-2">
+                                      <span className="text-xs text-muted-foreground mt-1">•</span>
+                                      <div className="flex-1">
+                                        <p className="text-sm">{q.question}</p>
+                                        <p className="text-xs text-muted-foreground">{q.why_it_matters}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* AUDIT TAB */}
           <TabsContent value="audit" className="space-y-4">
             <Card>
               <CardHeader><CardTitle className="text-sm">AI Price Audit (Internal Only)</CardTitle></CardHeader>
-              <CardContent><pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md max-h-96 overflow-y-auto">{form.ai_price_audit_summary}</pre></CardContent>
+              <CardContent><div className="prose prose-sm max-w-none bg-muted p-4 rounded-md max-h-96 overflow-y-auto"><ReactMarkdown>{form.ai_price_audit_summary || ''}</ReactMarkdown></div></CardContent>
             </Card>
             {revisions.length > 0 && (
               <Card>
@@ -717,11 +1115,40 @@ export default function NewEstimate() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* Confirm Modal */}
+      <Dialog open={confirmModal} onOpenChange={setConfirmModal}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Confirm Selected Rows</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Confirming {selectedRows.size} row(s). This will unlock them and mark as verified.</p>
+            <div>
+              <Label>What did you verify?</Label>
+              <Textarea value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)} placeholder="e.g. Confirmed tile area measurements on-site" rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmModal(false)}>Cancel</Button>
+            <Button onClick={confirmSelectedRows} disabled={!confirmNotes.trim()}>Confirm & Unlock</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-const FINISH_MULTS: Record<FinishLevel, number> = { Basic: 1.00, Mid: 1.15, High: 1.30, Luxury: 1.55 };
+// ─── Source Pill Component ───
+function SourcePill({ source, confidence, evidenceSource }: { source: string; confidence?: string; evidenceSource?: string }) {
+  const variant = source === 'CostLibrary' ? 'default' : source === 'Manual' ? 'secondary' : 'outline';
+  return (
+    <div className="flex flex-col gap-0.5">
+      <Badge variant={variant} className="text-xs">{source}</Badge>
+      {(source === 'AI Draft' || source === 'PhotoAI') && (
+        <span className="text-xs text-muted-foreground">{confidence} · {evidenceSource}</span>
+      )}
+    </div>
+  );
+}
 
 function MiniCard({ label, value }: { label: string; value: string }) {
   return (
