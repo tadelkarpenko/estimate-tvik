@@ -14,6 +14,186 @@ export type Database = {
   }
   public: {
     Tables: {
+      change_orders: {
+        Row: {
+          approved: boolean
+          approved_at: string | null
+          change_order_id: string
+          change_type: string
+          contract_id: string
+          created_at: string
+          delta_value: number
+          description: string
+          id: string
+          override_reason: string
+          user_id: string
+        }
+        Insert: {
+          approved?: boolean
+          approved_at?: string | null
+          change_order_id: string
+          change_type?: string
+          contract_id: string
+          created_at?: string
+          delta_value?: number
+          description?: string
+          id?: string
+          override_reason?: string
+          user_id: string
+        }
+        Update: {
+          approved?: boolean
+          approved_at?: string | null
+          change_order_id?: string
+          change_type?: string
+          contract_id?: string
+          created_at?: string
+          delta_value?: number
+          description?: string
+          id?: string
+          override_reason?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_orders_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_audit_log: {
+        Row: {
+          action_type: string
+          contract_id: string
+          created_at: string
+          id: string
+          new_value: string
+          old_value: string
+          reason: string
+          user_id: string
+        }
+        Insert: {
+          action_type?: string
+          contract_id: string
+          created_at?: string
+          id?: string
+          new_value?: string
+          old_value?: string
+          reason?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          contract_id?: string
+          created_at?: string
+          id?: string
+          new_value?: string
+          old_value?: string
+          reason?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_audit_log_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contracts: {
+        Row: {
+          baseline_contract_value: number
+          baseline_margin_pct: number
+          baseline_risk_exposure: number
+          cash_forecast_30: number
+          cash_forecast_60: number
+          cash_forecast_90: number
+          contract_id: string
+          contract_status: string
+          created_at: string
+          earned_revenue: number
+          estimate_id: string
+          id: string
+          locked: boolean
+          margin_current_pct: number
+          net_contract_value: number
+          payment_schedule_json: string
+          payment_terms_template: string
+          percent_complete: number
+          profit_fade_flag: boolean
+          projected_final_cost: number
+          projected_final_profit: number
+          signed_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          baseline_contract_value?: number
+          baseline_margin_pct?: number
+          baseline_risk_exposure?: number
+          cash_forecast_30?: number
+          cash_forecast_60?: number
+          cash_forecast_90?: number
+          contract_id: string
+          contract_status?: string
+          created_at?: string
+          earned_revenue?: number
+          estimate_id: string
+          id?: string
+          locked?: boolean
+          margin_current_pct?: number
+          net_contract_value?: number
+          payment_schedule_json?: string
+          payment_terms_template?: string
+          percent_complete?: number
+          profit_fade_flag?: boolean
+          projected_final_cost?: number
+          projected_final_profit?: number
+          signed_date?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          baseline_contract_value?: number
+          baseline_margin_pct?: number
+          baseline_risk_exposure?: number
+          cash_forecast_30?: number
+          cash_forecast_60?: number
+          cash_forecast_90?: number
+          contract_id?: string
+          contract_status?: string
+          created_at?: string
+          earned_revenue?: number
+          estimate_id?: string
+          id?: string
+          locked?: boolean
+          margin_current_pct?: number
+          net_contract_value?: number
+          payment_schedule_json?: string
+          payment_terms_template?: string
+          percent_complete?: number
+          profit_fade_flag?: boolean
+          projected_final_cost?: number
+          projected_final_profit?: number
+          signed_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cost_audits: {
         Row: {
           created_at: string
@@ -200,7 +380,10 @@ export type Database = {
       }
       estimate_line_items: {
         Row: {
+          actual_labor_cost_to_date: number
+          actual_material_cost_to_date: number
           confidence: string
+          contract_id: string | null
           created_at: string
           description: string
           estimate_id: string
@@ -217,14 +400,23 @@ export type Database = {
           material_unit_cost: number
           notes: string
           pending_confirmation: boolean
+          percent_complete: number
           phase: string
+          projected_labor_cost: number
+          projected_material_cost: number
           qty: number
+          scheduled_finish: string | null
+          scheduled_start: string | null
           source: string
           unit: string
           user_id: string
+          wip_status: string
         }
         Insert: {
+          actual_labor_cost_to_date?: number
+          actual_material_cost_to_date?: number
           confidence?: string
+          contract_id?: string | null
           created_at?: string
           description?: string
           estimate_id: string
@@ -241,14 +433,23 @@ export type Database = {
           material_unit_cost?: number
           notes?: string
           pending_confirmation?: boolean
+          percent_complete?: number
           phase?: string
+          projected_labor_cost?: number
+          projected_material_cost?: number
           qty?: number
+          scheduled_finish?: string | null
+          scheduled_start?: string | null
           source?: string
           unit?: string
           user_id: string
+          wip_status?: string
         }
         Update: {
+          actual_labor_cost_to_date?: number
+          actual_material_cost_to_date?: number
           confidence?: string
+          contract_id?: string | null
           created_at?: string
           description?: string
           estimate_id?: string
@@ -265,13 +466,26 @@ export type Database = {
           material_unit_cost?: number
           notes?: string
           pending_confirmation?: boolean
+          percent_complete?: number
           phase?: string
+          projected_labor_cost?: number
+          projected_material_cost?: number
           qty?: number
+          scheduled_finish?: string | null
+          scheduled_start?: string | null
           source?: string
           unit?: string
           user_id?: string
+          wip_status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "estimate_line_items_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "estimate_line_items_estimate_id_fkey"
             columns: ["estimate_id"]

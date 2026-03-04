@@ -13,6 +13,8 @@ import CostLibraryPage from "./pages/CostLibraryPage";
 import RiskLibraryPage from "./pages/RiskLibraryPage";
 import CostAuditPage from "./pages/CostAuditPage";
 import AdminPage from "./pages/AdminPage";
+import ContractsList from "./pages/ContractsList";
+import ContractDetail from "./pages/ContractDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +44,8 @@ const App = () => (
               <Route path="/cost-library" element={<CostLibraryPage />} />
               <Route path="/risk-library" element={<RiskLibraryPage />} />
               <Route path="/cost-audit" element={<CostAuditPage />} />
+              <Route path="/contracts" element={<ContractsList />} />
+              <Route path="/contracts/:id" element={<ContractDetail />} />
               <Route path="/admin" element={<AdminPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
