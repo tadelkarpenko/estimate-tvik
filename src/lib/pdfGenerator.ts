@@ -156,6 +156,85 @@ export function generateInternalPDF(est: Estimate) {
   return 'generated';
 }
 
+export function generateContractPDF(contract: {
+  contract_id: string;
+  signed_date: string;
+  contract_status: string;
+  baseline_contract_value: number;
+  baseline_margin_pct: number;
+  baseline_risk_exposure: number;
+  net_contract_value: number;
+  earned_revenue: number;
+  percent_complete: number;
+  projected_final_cost: number;
+  projected_final_profit: number;
+  margin_current_pct: number;
+  profit_fade_flag: boolean;
+  cash_forecast_30: number;
+  cash_forecast_60: number;
+  cash_forecast_90: number;
+}, changeOrders: Array<{ change_order_id: string; description: string; change_type: string; delta_value: number; approved: boolean; }>) {
+  const approvedCOs = changeOrders.filter(c => c.approved);
+  const approvedTotal = approvedCOs.reduce((s, c) => s + c.delta_value, 0);
+
+  const html = `<!DOCTYPE html><html><head><title>Contract Financial Summary - ${contract.contract_id}</title>${baseStyles()}</head><body>
+    <div class="header-bar">
+      <h1>TVIK LLC — CONTRACT FINANCIAL SUMMARY</h1>
+      <p style="font-size:12px;opacity:0.8;color:${GOLD};">CONFIDENTIAL — INTERNAL USE ONLY</p>
+    </div>
+    <div class="gold-line"></div>
+
+    <h2>1. Contract Overview</h2>
+    <div class="summary-box">
+      <p><strong>Contract:</strong> ${contract.contract_id} | <strong>Status:</strong> ${contract.contract_status}</p>
+      <p><strong>Signed:</strong> ${new Date(contract.signed_date).toLocaleDateString()}</p>
+    </div>
+
+    <h2>2. Contract Values</h2>
+    <table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>
+      <tr><td>Baseline Contract Value</td><td style="text-align:right">${formatMoney(contract.baseline_contract_value)}</td></tr>
+      <tr><td>Approved Change Orders (${approvedCOs.length})</td><td style="text-align:right">${approvedTotal >= 0 ? '+' : ''}${formatMoney(approvedTotal)}</td></tr>
+      <tr><td><strong>Net Contract Value</strong></td><td style="text-align:right"><strong>${formatMoney(contract.net_contract_value)}</strong></td></tr>
+    </tbody></table>
+
+    ${approvedCOs.length > 0 ? `
+    <h2>3. Approved Change Orders</h2>
+    <table><thead><tr><th>CO ID</th><th>Type</th><th>Description</th><th>Delta</th></tr></thead><tbody>
+    ${approvedCOs.map(co => `<tr><td>${co.change_order_id}</td><td>${co.change_type}</td><td>${co.description}</td><td style="text-align:right">${co.delta_value >= 0 ? '+' : ''}${formatMoney(co.delta_value)}</td></tr>`).join('')}
+    </tbody></table>` : '<h2>3. Change Orders</h2><p>No approved change orders.</p>'}
+
+    <h2>4. Work-in-Progress</h2>
+    <div class="summary-box">
+      <p><strong>Percent Complete:</strong> ${contract.percent_complete.toFixed(1)}%</p>
+      <p><strong>Earned Revenue:</strong> ${formatMoney(contract.earned_revenue)}</p>
+    </div>
+
+    <h2>5. Projected Financials</h2>
+    <table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>
+      <tr><td>Projected Final Cost</td><td style="text-align:right">${formatMoney(contract.projected_final_cost)}</td></tr>
+      <tr><td>Projected Profit</td><td style="text-align:right">${formatMoney(contract.projected_final_profit)}</td></tr>
+      <tr><td>Current Margin</td><td style="text-align:right">${(contract.margin_current_pct * 100).toFixed(1)}%</td></tr>
+      <tr><td>Baseline Margin</td><td style="text-align:right">${(contract.baseline_margin_pct * 100).toFixed(1)}%</td></tr>
+      <tr><td>Baseline Risk Exposure</td><td style="text-align:right">${formatMoney(contract.baseline_risk_exposure)}</td></tr>
+    </tbody></table>
+    ${contract.profit_fade_flag ? '<p style="color:red;font-weight:bold;margin-top:8px;">⚠ PROFIT FADE DETECTED — Margin dropped more than 5 pts from baseline</p>' : ''}
+
+    <h2>6. Cash Forecast</h2>
+    <table><thead><tr><th>Window</th><th>Forecast</th></tr></thead><tbody>
+      <tr><td>30-Day</td><td style="text-align:right">${formatMoney(contract.cash_forecast_30)}</td></tr>
+      <tr><td>60-Day</td><td style="text-align:right">${formatMoney(contract.cash_forecast_60)}</td></tr>
+      <tr><td>90-Day</td><td style="text-align:right">${formatMoney(contract.cash_forecast_90)}</td></tr>
+    </tbody></table>
+
+    <div class="sig-block">
+      <p style="font-size:11px;color:#999;">Generated ${new Date().toLocaleString()} | TVIK LLC Internal Document</p>
+    </div>
+  </body></html>`;
+
+  openPDF(html);
+  return 'generated';
+}
+
 function openPDF(html: string) {
   const win = window.open('', '_blank');
   if (win) {

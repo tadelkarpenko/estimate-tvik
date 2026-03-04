@@ -10,6 +10,9 @@ import {
 } from '@/lib/contractStore';
 import { getEstimateLineItems } from '@/lib/store';
 import { recomputeContractWIP, computeCashForecast, computeTradeDrift, driftEntriesToFactors, type TradeDriftEntry } from '@/lib/contractEngine';
+import { computeSubcontractExposure } from '@/lib/phase5Engine';
+import { getSubcontracts, saveSubcontract, getSubcontractInvoices, getSchedulePhases } from '@/lib/phase5Store';
+import type { Subcontract, SchedulePhase } from '@/lib/phase5Types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +23,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText } from 'lucide-react';
+import { generateContractPDF } from '@/lib/pdfGenerator';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ContractDetail() {
@@ -32,9 +36,13 @@ export default function ContractDetail() {
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([]);
   const [auditLog, setAuditLog] = useState<ContractAuditEntry[]>([]);
   const [driftEntries, setDriftEntries] = useState<TradeDriftEntry[]>([]);
+  const [subcontracts, setSubcontracts] = useState<Subcontract[]>([]);
+  const [schedulePhases, setSchedulePhases] = useState<SchedulePhase[]>([]);
   const [loading, setLoading] = useState(true);
   const [coModal, setCoModal] = useState(false);
   const [coForm, setCoForm] = useState({ description: '', change_type: 'Scope Correction' as ChangeOrderType, delta_value: 0 });
+  const [subModal, setSubModal] = useState(false);
+  const [subForm, setSubForm] = useState({ vendor_name: '', trade: '', committed_cost: 0, estimated_trade_budget: 0 });
   const [overrideModal, setOverrideModal] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
@@ -45,16 +53,20 @@ export default function ContractDetail() {
       const c = await getContract(id);
       if (!c) { navigate('/contracts'); return; }
       setContract(c);
-      const [items, cos, log, completedItems] = await Promise.all([
+      const [items, cos, log, completedItems, subs, phases] = await Promise.all([
         getEstimateLineItems(c.estimate_id),
         getChangeOrders(c.id!),
         getAuditLog(c.id!),
         getCompletedLineItemsForDrift(),
+        getSubcontracts(c.id!),
+        getSchedulePhases(c.id!),
       ]);
       setLineItems(items);
       setChangeOrders(cos);
       setAuditLog(log);
       setDriftEntries(computeTradeDrift(completedItems));
+      setSubcontracts(subs);
+      setSchedulePhases(phases);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [id, navigate]);
@@ -170,6 +182,30 @@ export default function ContractDetail() {
     await load();
   };
 
+  // Create subcontract
+  const createSub = async () => {
+    if (!contract || !subForm.vendor_name.trim()) return;
+    const subId = `SUB-${contract.contract_id}-${subcontracts.length + 1}`;
+    await saveSubcontract({
+      subcontract_id: subId, contract_id: contract.id!,
+      vendor_name: subForm.vendor_name, trade: subForm.trade,
+      committed_cost: subForm.committed_cost, approved_cost: 0,
+      estimated_trade_budget: subForm.estimated_trade_budget,
+      remaining_commitment: subForm.committed_cost,
+      exposure_index: subForm.estimated_trade_budget > 0 ? subForm.committed_cost / subForm.estimated_trade_budget : 0,
+      status: 'Active', notes: '',
+    });
+    await logAuditEntry({
+      contract_id: contract.id!, action_type: 'Subcontract Created',
+      old_value: '', new_value: `${subId}: ${subForm.vendor_name} - ${fmt(subForm.committed_cost)}`,
+      reason: `Trade: ${subForm.trade}`,
+    });
+    setSubModal(false);
+    setSubForm({ vendor_name: '', trade: '', committed_cost: 0, estimated_trade_budget: 0 });
+    toast({ title: 'Subcontract created' });
+    await load();
+  };
+
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
   if (!contract) return <div className="py-8 text-center text-muted-foreground">Contract not found</div>;
 
@@ -203,12 +239,16 @@ export default function ContractDetail() {
       <div className="flex gap-2">
         <Button size="sm" onClick={recompute}>Recompute WIP</Button>
         <Button size="sm" variant="outline" onClick={() => setCoModal(true)}><Plus className="h-3 w-3 mr-1" />Create Change Order</Button>
+        <Button size="sm" variant="outline" onClick={() => generateContractPDF(contract, changeOrders)}>
+          <FileText className="h-3 w-3 mr-1" />Export Financial PDF
+        </Button>
       </div>
 
       <Tabs defaultValue="wip">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="wip">Line-Item WIP</TabsTrigger>
           <TabsTrigger value="change-orders">Change Orders ({changeOrders.length})</TabsTrigger>
+          <TabsTrigger value="subcontracts">Subcontracts ({subcontracts.length})</TabsTrigger>
           <TabsTrigger value="cash">Cash Forecast</TabsTrigger>
           <TabsTrigger value="drift">Trade Drift{driftEntries.some(d => d.alert) ? ' ⚠' : ''}</TabsTrigger>
           <TabsTrigger value="margin">Margin & Risk</TabsTrigger>
@@ -316,7 +356,59 @@ export default function ContractDetail() {
           </Card>
         </TabsContent>
 
-        {/* Cash Forecast Tab */}
+        {/* Subcontracts Tab */}
+        <TabsContent value="subcontracts" className="space-y-4">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setSubModal(true)}><Plus className="h-3 w-3 mr-1" />Add Subcontract</Button>
+          </div>
+          <Card>
+            <CardContent className="pt-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Trade</TableHead>
+                    <TableHead className="text-right">Committed</TableHead>
+                    <TableHead className="text-right">Budget</TableHead>
+                    <TableHead className="text-right">Exposure</TableHead>
+                    <TableHead>Risk</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subcontracts.map(sub => {
+                    const exposure = computeSubcontractExposure(sub, []);
+                    return (
+                      <TableRow key={sub.id}>
+                        <TableCell className="font-mono text-sm">{sub.subcontract_id}</TableCell>
+                        <TableCell className="font-medium">{sub.vendor_name}</TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs">{sub.trade}</Badge></TableCell>
+                        <TableCell className="text-right">{fmt(sub.committed_cost)}</TableCell>
+                        <TableCell className="text-right">{fmt(sub.estimated_trade_budget)}</TableCell>
+                        <TableCell className="text-right font-mono font-bold">
+                          <span className={exposure.overcommit_risk ? 'text-destructive' : ''}>{exposure.exposure_index.toFixed(3)}x</span>
+                        </TableCell>
+                        <TableCell>
+                          {exposure.overcommit_risk ? (
+                            <Badge variant="destructive" className="text-xs"><AlertTriangle className="h-3 w-3 mr-1" />Overcommit</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">Normal</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell><Badge variant="secondary" className="text-xs">{sub.status}</Badge></TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {subcontracts.length === 0 && (
+                    <TableRow><TableCell colSpan={8} className="text-center py-4 text-muted-foreground">No subcontracts</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="cash" className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <MiniCard label="30-Day Forecast" value={fmt(contract.cash_forecast_30)} />
@@ -513,6 +605,23 @@ export default function ContractDetail() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCoModal(false)}>Cancel</Button>
             <Button onClick={createCO} disabled={!coForm.description.trim()}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Subcontract Modal */}
+      <Dialog open={subModal} onOpenChange={setSubModal}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add Subcontract</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Vendor Name</Label><Input value={subForm.vendor_name} onChange={e => setSubForm(p => ({ ...p, vendor_name: e.target.value }))} /></div>
+            <div><Label>Trade</Label><Input value={subForm.trade} onChange={e => setSubForm(p => ({ ...p, trade: e.target.value }))} placeholder="e.g. Plumbing, Electrical" /></div>
+            <div><Label>Committed Cost ($)</Label><Input type="number" step="0.01" value={subForm.committed_cost || ''} onChange={e => setSubForm(p => ({ ...p, committed_cost: Number(e.target.value) }))} /></div>
+            <div><Label>Estimated Trade Budget ($)</Label><Input type="number" step="0.01" value={subForm.estimated_trade_budget || ''} onChange={e => setSubForm(p => ({ ...p, estimated_trade_budget: Number(e.target.value) }))} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubModal(false)}>Cancel</Button>
+            <Button onClick={createSub} disabled={!subForm.vendor_name.trim()}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
