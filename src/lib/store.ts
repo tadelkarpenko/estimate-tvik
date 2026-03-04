@@ -369,7 +369,12 @@ function rowToEstimate(r: any): Estimate {
     internal_notes: r.internal_notes || '', public_notes: r.public_notes || '',
     clarification_answers_json: r.clarification_answers_json || '[]',
     ai_suggestions_last_json: r.ai_suggestions_last_json || '[]',
-  };
+    validity_days: Number(r.validity_days ?? 14),
+    material_volatility_flag: r.material_volatility_flag ?? false,
+    volatility_reviewed: r.volatility_reviewed ?? false,
+    completeness_score: Number(r.completeness_score ?? 0),
+    calc_status: r.calc_status || 'Stale',
+  } as Estimate;
 }
 
 function estimateToRow(est: Estimate, userId: string) {
@@ -398,6 +403,11 @@ function estimateToRow(est: Estimate, userId: string) {
     internal_notes: est.internal_notes, public_notes: est.public_notes,
     clarification_answers_json: est.clarification_answers_json || '[]',
     ai_suggestions_last_json: est.ai_suggestions_last_json || '[]',
+    validity_days: (est as any).validity_days ?? 14,
+    material_volatility_flag: (est as any).material_volatility_flag ?? false,
+    volatility_reviewed: (est as any).volatility_reviewed ?? false,
+    completeness_score: (est as any).completeness_score ?? 0,
+    calc_status: (est as any).calc_status || 'Stale',
   };
 }
 
