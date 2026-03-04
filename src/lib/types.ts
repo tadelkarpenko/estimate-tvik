@@ -4,6 +4,12 @@ export type FinishLevel = 'Basic' | 'Mid' | 'High' | 'Luxury';
 export type QtyRule = 'sqft' | 'fixture' | 'lump_sum' | 'each' | 'lf' | 'hour';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
 export type AuditStatus = 'Open' | 'Accepted' | 'Ignored';
+export type Phase = 'Demo' | 'Protection' | 'Framing' | 'Drywall' | 'Paint' | 'Flooring' | 'Electrical' | 'Plumbing' | 'HVAC' | 'Kitchen' | 'Bath' | 'Exterior' | 'Roofing' | 'Permits' | 'Cleaning' | 'Other';
+export type LineItemUnit = 'ea' | 'sf' | 'lf' | 'fixture' | 'hr' | 'day' | 'lump_sum';
+export type LineItemSource = 'CostLibrary' | 'Assembly' | 'Manual' | 'AI_Suggestion';
+export type CrewTrade = 'Demo' | 'Framing' | 'Drywall' | 'Paint' | 'Flooring' | 'Electrical' | 'Plumbing' | 'HVAC' | 'General' | 'Exterior' | 'Roofing';
+export type ChatRole = 'user' | 'assistant' | 'system';
+export type AIConfidence = 'Low' | 'Medium' | 'High';
 
 export interface Estimate {
   estimate_id: string;
@@ -47,6 +53,13 @@ export interface Estimate {
   internal_pdf_url: string;
   version: string;
   last_revision_summary: string;
+  // New fields
+  crew_size: number;
+  hours_per_day: number;
+  subtotal_labor_hours: number;
+  estimated_duration_days: number;
+  internal_notes: string;
+  public_notes: string;
 }
 
 export interface CostLibraryItem {
@@ -61,6 +74,11 @@ export interface CostLibraryItem {
   unit_label: string;
   notes: string;
   last_updated: string;
+  // New fields
+  labor_hours_per_unit: number;
+  crew_trade: CrewTrade;
+  productivity_note: string;
+  active: boolean;
 }
 
 export interface RiskLibraryItem {
@@ -118,4 +136,71 @@ export interface RiskTableItem {
   exposure_low: number;
   exposure_high: number;
   mitigation_note: string;
+}
+
+// ─── New collection types ───
+
+export interface EstimateLineItem {
+  id?: string;
+  line_id: string;
+  estimate_id: string; // uuid FK to estimates.id
+  user_id?: string;
+  phase: Phase;
+  description: string;
+  unit: LineItemUnit;
+  qty: number;
+  labor_unit_cost: number;
+  material_unit_cost: number;
+  labor_hours_per_unit: number;
+  labor_hours_total: number;
+  labor_total: number;
+  material_total: number;
+  line_total: number;
+  source: LineItemSource;
+  locked: boolean;
+  created_at?: string;
+}
+
+export interface EstimateMedia {
+  id?: string;
+  media_id: string;
+  estimate_id: string;
+  user_id?: string;
+  file_url: string;
+  caption: string;
+  include_in_internal_pdf: boolean;
+  include_in_public_pdf: boolean;
+  created_at?: string;
+}
+
+export interface EstimateMediaAnalysis {
+  id?: string;
+  analysis_id: string;
+  media_id: string; // uuid FK to estimate_media.id
+  user_id?: string;
+  observed_conditions: string;
+  suggested_scope_impacts: string;
+  risk_flags: string;
+  recommended_allowance_range: string;
+  ai_confidence: AIConfidence;
+  created_at?: string;
+}
+
+export interface EstimateChatThread {
+  id?: string;
+  thread_id: string;
+  estimate_id: string;
+  user_id?: string;
+  title: string;
+  created_at?: string;
+}
+
+export interface EstimateChatMessage {
+  id?: string;
+  message_id: string;
+  thread_id: string; // uuid FK to estimate_chat_threads.id
+  user_id?: string;
+  role: ChatRole;
+  content: string;
+  created_at?: string;
 }
