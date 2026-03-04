@@ -6,6 +6,8 @@ import type {
   EstimateMedia, EstimateChatThread, EstimateChatMessage, EstimateMediaAnalysis,
   SuggestedChanges, SuggestedAction, AIConfidence, Phase, LineItemUnit,
 } from '@/lib/types';
+import type { Contract, PaymentMilestone } from '@/lib/contractTypes';
+import { PAYMENT_TEMPLATES } from '@/lib/contractTypes';
 import {
   getEstimate, saveEstimate, nextEstimateId, uid, getCostLibrary, getRiskLibrary,
   getRevisionLogs, saveRevisionLog, updateEstimateStatus, initStore, getEstimateDbId,
@@ -13,6 +15,9 @@ import {
   getEstimateMedia, saveEstimateMedia, deleteEstimateMedia,
   getChatThreads, createChatThread, getChatMessages, saveChatMessage,
 } from '@/lib/store';
+import {
+  saveContract, logAuditEntry, linkLineItemsToContract,
+} from '@/lib/contractStore';
 import { runCostEngine } from '@/lib/costEngine';
 import { runRiskEngine } from '@/lib/riskEngine';
 import { generateAssumptions, generateTimeline, generateScopeAI, generateAuditAI } from '@/lib/generators';
@@ -31,7 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles } from 'lucide-react';
+import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { EstimateRevisionLog } from '@/lib/types';
 
@@ -285,6 +290,63 @@ export default function NewEstimate() {
     if (!form.estimate_id) return;
     await updateEstimateStatus(form.estimate_id, status);
     update({ status });
+
+    // CONTRACT LOCK WORKFLOW: When status → Accepted, create contract
+    if (status === 'Accepted' && estimateDbId) {
+      try {
+        const marginMult = (1 + (form.overhead_pct || 0.1)) * (1 + (form.profit_pct || 0.2)) * (1 + (form.contingency_pct || 0.1));
+        const baselineValue = form.total_high || 0;
+        const baselineMargin = baselineValue > 0 ? ((form.profit_pct || 0.2)) : 0;
+        const template = 'Standard-3Pay' as const;
+        const milestones = PAYMENT_TEMPLATES[template];
+        const contractId = `CTR-${form.estimate_id}`;
+
+        const contract: Contract = {
+          contract_id: contractId,
+          estimate_id: estimateDbId,
+          contract_status: 'Active',
+          baseline_contract_value: baselineValue,
+          baseline_margin_pct: baselineMargin,
+          baseline_risk_exposure: form.risk_cost_high || 0,
+          signed_date: new Date().toISOString().split('T')[0],
+          locked: true,
+          net_contract_value: baselineValue,
+          earned_revenue: 0,
+          percent_complete: 0,
+          projected_final_cost: (form.subtotal || 0) + (form.risk_cost_high || 0),
+          projected_final_profit: baselineValue - ((form.subtotal || 0) + (form.risk_cost_high || 0)),
+          margin_current_pct: baselineMargin,
+          profit_fade_flag: false,
+          payment_terms_template: template,
+          payment_schedule_json: JSON.stringify(milestones),
+          cash_forecast_30: Math.round(baselineValue * 0.3 * 100) / 100,
+          cash_forecast_60: 0,
+          cash_forecast_90: Math.round(baselineValue * 0.4 * 100) / 100,
+        };
+
+        const contractDbId = await saveContract(contract);
+        await linkLineItemsToContract(estimateDbId, contractDbId);
+
+        // Create revision log for contract lock
+        await saveRevisionLog({
+          id: uid(), estimate_id: form.estimate_id, created_at: new Date().toISOString(),
+          version: form.version || 'v1.0', change_summary: 'Contract Lock — Estimate accepted',
+          snapshot_json: JSON.stringify(form), delta_low: 0, delta_high: 0,
+        });
+
+        await logAuditEntry({
+          contract_id: contractDbId, action_type: 'Contract Created',
+          old_value: '', new_value: `${contractId}: ${fmt(baselineValue)}`,
+          reason: 'Estimate accepted → Contract locked',
+        });
+
+        toast({ title: 'Contract created', description: `${contractId} locked at ${fmt(baselineValue)}` });
+      } catch (e) {
+        console.error('Contract creation error:', e);
+        toast({ title: 'Contract creation failed', description: e instanceof Error ? e.message : 'Unknown', variant: 'destructive' });
+      }
+    }
+
     toast({ title: `Marked as ${status}` });
   };
 
@@ -758,6 +820,11 @@ export default function NewEstimate() {
           {form.status !== 'Sent' && <Button variant="outline" onClick={() => setStatus('Sent')} className="text-blue-600 border-blue-300 hover:bg-blue-50"><Send className="mr-1 h-4 w-4" />Mark as Sent</Button>}
           {form.status !== 'Accepted' && <Button variant="outline" onClick={() => setStatus('Accepted')} className="text-green-600 border-green-300 hover:bg-green-50"><CheckCircle className="mr-1 h-4 w-4" />Mark as Accepted</Button>}
           {form.status !== 'Rejected' && <Button variant="outline" onClick={() => setStatus('Rejected')} className="text-red-600 border-red-300 hover:bg-red-50"><XCircle className="mr-1 h-4 w-4" />Mark as Rejected</Button>}
+          {form.status === 'Accepted' && (
+            <Button variant="outline" onClick={() => navigate('/contracts')} className="border-primary/50">
+              <Briefcase className="mr-1 h-4 w-4" />View Contract
+            </Button>
+          )}
         </div>
       )}
 

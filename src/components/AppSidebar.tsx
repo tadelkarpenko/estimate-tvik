@@ -1,4 +1,4 @@
-import { LayoutDashboard, FilePlus, FileText, BookOpen, ShieldAlert, Search, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, FilePlus, FileText, BookOpen, ShieldAlert, Search, Settings, LogOut, Briefcase } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -14,6 +14,7 @@ const navItems = [
   { title: 'Cost Library', url: '/cost-library', icon: BookOpen },
   { title: 'Risk Library', url: '/risk-library', icon: ShieldAlert },
   { title: 'Cost Audit', url: '/cost-audit', icon: Search },
+  { title: 'Contracts', url: '/contracts', icon: Briefcase },
   { title: 'Admin', url: '/admin', icon: Settings },
 ];
 
