@@ -305,6 +305,54 @@ export type Database = {
         }
         Relationships: []
       }
+      crew_capacity: {
+        Row: {
+          created_at: string
+          crew_size: number
+          effective_from: string
+          effective_to: string | null
+          hours_per_day: number
+          id: string
+          max_safe_utilization_pct: number
+          overtime_allowed: boolean
+          overtime_multiplier: number
+          trade: string
+          updated_at: string
+          user_id: string
+          work_days_per_week: number
+        }
+        Insert: {
+          created_at?: string
+          crew_size?: number
+          effective_from?: string
+          effective_to?: string | null
+          hours_per_day?: number
+          id?: string
+          max_safe_utilization_pct?: number
+          overtime_allowed?: boolean
+          overtime_multiplier?: number
+          trade?: string
+          updated_at?: string
+          user_id: string
+          work_days_per_week?: number
+        }
+        Update: {
+          created_at?: string
+          crew_size?: number
+          effective_from?: string
+          effective_to?: string | null
+          hours_per_day?: number
+          id?: string
+          max_safe_utilization_pct?: number
+          overtime_allowed?: boolean
+          overtime_multiplier?: number
+          trade?: string
+          updated_at?: string
+          user_id?: string
+          work_days_per_week?: number
+        }
+        Relationships: []
+      }
       estimate_chat_messages: {
         Row: {
           content: string
