@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.execution-intelligence]
 verify_jwt = false
+
+[functions.pricing-intelligence]
+verify_jwt = false

@@ -6,40 +6,94 @@ import { computeTradeDrift, type TradeDriftEntry } from '@/lib/contractEngine';
 import { computePortfolioIntelligence, type PortfolioIntelligence } from '@/lib/phase5Engine';
 import { getVendorPerformance } from '@/lib/phase5Store';
 import type { VendorPerformance } from '@/lib/phase5Types';
+import { getCrewCapacities, getAllActiveContractLineItems } from '@/lib/capacityStore';
+import { computeFullCapacityAnalysis, assessBacklogHealth, detectBottlenecks, type TradeUtilizationSummary, type CrewCapacity } from '@/lib/capacityEngine';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertTriangle, TrendingUp, TrendingDown, BarChart3, Plus, Users, Trash2 } from 'lucide-react';
+import { saveCrewCapacity, deleteCrewCapacity } from '@/lib/capacityStore';
+import { useToast } from '@/hooks/use-toast';
+
+const TIER_COLORS: Record<string, string> = {
+  Green: 'bg-green-100 text-green-800',
+  Yellow: 'bg-yellow-100 text-yellow-800',
+  Orange: 'bg-orange-100 text-orange-800',
+  Red: 'bg-red-100 text-red-800',
+};
 
 export default function ContractsList() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [driftEntries, setDriftEntries] = useState<TradeDriftEntry[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioIntelligence | null>(null);
   const [vendors, setVendors] = useState<VendorPerformance[]>([]);
+  const [capacities, setCapacities] = useState<CrewCapacity[]>([]);
+  const [utilization, setUtilization] = useState<TradeUtilizationSummary[]>([]);
+  const [backlogHealth, setBacklogHealth] = useState<{ status: string; message: string } | null>(null);
+  const [bottlenecks, setBottlenecks] = useState<TradeUtilizationSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [capModal, setCapModal] = useState(false);
+  const [capForm, setCapForm] = useState<Partial<CrewCapacity>>({
+    trade: '', crew_size: 2, hours_per_day: 8, work_days_per_week: 5,
+    overtime_allowed: false, overtime_multiplier: 1.5, max_safe_utilization_pct: 85,
+    effective_from: new Date().toISOString().split('T')[0],
+  });
   const navigate = useNavigate();
+  const { toast } = useToast();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [data, completedItems, vendorData] = await Promise.all([
-          getContracts(),
-          getCompletedLineItemsForDrift(),
-          getVendorPerformance(),
-        ]);
-        setContracts(data);
-        setDriftEntries(computeTradeDrift(completedItems));
-        setPortfolio(computePortfolioIntelligence(data));
-        setVendors(vendorData);
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    })();
-  }, []);
+  const loadAll = async () => {
+    try {
+      const [data, completedItems, vendorData, caps, activeItems] = await Promise.all([
+        getContracts(), getCompletedLineItemsForDrift(), getVendorPerformance(),
+        getCrewCapacities(), getAllActiveContractLineItems(),
+      ]);
+      setContracts(data);
+      setDriftEntries(computeTradeDrift(completedItems));
+      setPortfolio(computePortfolioIntelligence(data));
+      setVendors(vendorData);
+      setCapacities(caps);
+
+      // Compute capacity analysis
+      if (caps.length > 0) {
+        const util = computeFullCapacityAnalysis(activeItems, caps);
+        setUtilization(util);
+        setBacklogHealth(assessBacklogHealth(util));
+        setBottlenecks(detectBottlenecks(util));
+      }
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadAll(); }, []);
 
   const fmt = (n: number) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pct = (n: number) => (n * 100).toFixed(1) + '%';
   const driftAlerts = driftEntries.filter(d => d.alert);
+
+  const addCapacity = async () => {
+    if (!capForm.trade) return;
+    await saveCrewCapacity(capForm as CrewCapacity);
+    setCapModal(false);
+    setCapForm({
+      trade: '', crew_size: 2, hours_per_day: 8, work_days_per_week: 5,
+      overtime_allowed: false, overtime_multiplier: 1.5, max_safe_utilization_pct: 85,
+      effective_from: new Date().toISOString().split('T')[0],
+    });
+    toast({ title: 'Crew capacity added' });
+    await loadAll();
+  };
+
+  const removeCap = async (id: string) => {
+    await deleteCrewCapacity(id);
+    toast({ title: 'Crew capacity removed' });
+    await loadAll();
+  };
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
@@ -61,8 +115,11 @@ export default function ContractsList() {
       )}
 
       <Tabs defaultValue="contracts">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="contracts">Contracts</TabsTrigger>
+          <TabsTrigger value="capacity">
+            Capacity{bottlenecks.length > 0 ? ' ⚠' : ''}
+          </TabsTrigger>
           <TabsTrigger value="drift">Trade Drift{driftAlerts.length > 0 ? ' ⚠' : ''}</TabsTrigger>
           <TabsTrigger value="vendors">Vendor Ranking ({vendors.length})</TabsTrigger>
         </TabsList>
@@ -111,6 +168,121 @@ export default function ContractsList() {
                   )}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Capacity Intelligence Tab */}
+        <TabsContent value="capacity" className="space-y-4">
+          {/* Backlog Health */}
+          {backlogHealth && (
+            <Card className={backlogHealth.status === 'Critical' || backlogHealth.status === 'Low' ? 'border-destructive/30' : ''}>
+              <CardContent className="pt-3 pb-2 px-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  <Badge className={
+                    backlogHealth.status === 'Healthy' ? 'bg-green-100 text-green-800' :
+                    backlogHealth.status === 'High' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }>{backlogHealth.status}</Badge>
+                  <span className="text-sm">{backlogHealth.message}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Bottleneck Alerts */}
+          {bottlenecks.length > 0 && (
+            <Card className="border-destructive/30">
+              <CardContent className="pt-3 pb-2 px-4 space-y-1">
+                {bottlenecks.map(b => (
+                  <div key={b.trade} className="flex items-center gap-2 text-sm">
+                    <AlertTriangle className="h-3 w-3 text-destructive" />
+                    <span className="text-destructive font-medium">⚠ {b.trade} Crew Overloaded — {b.next_30d_pct.toFixed(0)}% utilization next 30 days</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Utilization Table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2"><Users className="h-4 w-4" />Trade Utilization</CardTitle>
+                <Button size="sm" variant="outline" onClick={() => setCapModal(true)}><Plus className="h-3 w-3 mr-1" />Add Crew Capacity</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {utilization.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Trade</TableHead>
+                      <TableHead className="text-right">30d Util%</TableHead>
+                      <TableHead className="text-right">60d Util%</TableHead>
+                      <TableHead className="text-right">90d Util%</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Earliest New Start</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {utilization.map(u => (
+                      <TableRow key={u.trade}>
+                        <TableCell className="font-medium">{u.trade}</TableCell>
+                        <TableCell className="text-right font-mono">{u.next_30d_pct.toFixed(0)}%</TableCell>
+                        <TableCell className="text-right font-mono">{u.next_60d_pct.toFixed(0)}%</TableCell>
+                        <TableCell className="text-right font-mono">{u.next_90d_pct.toFixed(0)}%</TableCell>
+                        <TableCell><Badge className={TIER_COLORS[u.status] || ''}>{u.status}</Badge></TableCell>
+                        <TableCell className="text-sm">{u.earliest_new_start || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-center py-4 text-muted-foreground">
+                  {capacities.length === 0 ? 'Add crew capacity per trade to see utilization analysis.' : 'No active contract line items to analyze.'}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Crew Capacity Configuration */}
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">Crew Capacity Configuration</CardTitle></CardHeader>
+            <CardContent>
+              {capacities.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Trade</TableHead>
+                      <TableHead className="text-right">Crew Size</TableHead>
+                      <TableHead className="text-right">Hrs/Day</TableHead>
+                      <TableHead className="text-right">Days/Wk</TableHead>
+                      <TableHead>OT</TableHead>
+                      <TableHead className="text-right">Max Util%</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {capacities.map(c => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.trade}</TableCell>
+                        <TableCell className="text-right">{c.crew_size}</TableCell>
+                        <TableCell className="text-right">{c.hours_per_day}</TableCell>
+                        <TableCell className="text-right">{c.work_days_per_week}</TableCell>
+                        <TableCell>{c.overtime_allowed ? <Badge variant="secondary" className="text-xs">Yes ({c.overtime_multiplier}x)</Badge> : '—'}</TableCell>
+                        <TableCell className="text-right">{c.max_safe_utilization_pct}%</TableCell>
+                        <TableCell>
+                          <Button size="sm" variant="ghost" onClick={() => removeCap(c.id!)}><Trash2 className="h-3 w-3" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-center py-4 text-muted-foreground">No crew capacity configured yet.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -239,6 +411,38 @@ export default function ContractsList() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Add Crew Capacity Modal */}
+      <Dialog open={capModal} onOpenChange={setCapModal}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add Crew Capacity</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Trade</Label><Input value={capForm.trade || ''} onChange={e => setCapForm(p => ({ ...p, trade: e.target.value }))} placeholder="e.g. Electrical, Plumbing, Framing" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Crew Size</Label><Input type="number" value={capForm.crew_size || ''} onChange={e => setCapForm(p => ({ ...p, crew_size: Number(e.target.value) }))} /></div>
+              <div><Label>Hours/Day</Label><Input type="number" value={capForm.hours_per_day || ''} onChange={e => setCapForm(p => ({ ...p, hours_per_day: Number(e.target.value) }))} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Work Days/Week</Label><Input type="number" value={capForm.work_days_per_week || ''} onChange={e => setCapForm(p => ({ ...p, work_days_per_week: Number(e.target.value) }))} /></div>
+              <div><Label>Max Safe Utilization %</Label><Input type="number" value={capForm.max_safe_utilization_pct || ''} onChange={e => setCapForm(p => ({ ...p, max_safe_utilization_pct: Number(e.target.value) }))} /></div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={capForm.overtime_allowed || false} onCheckedChange={v => setCapForm(p => ({ ...p, overtime_allowed: v }))} />
+              <Label>Overtime Allowed</Label>
+              {capForm.overtime_allowed && (
+                <div className="flex items-center gap-1 ml-2">
+                  <Label className="text-xs">Multiplier:</Label>
+                  <Input type="number" step="0.1" className="w-16 h-7 text-sm" value={capForm.overtime_multiplier || 1.5} onChange={e => setCapForm(p => ({ ...p, overtime_multiplier: Number(e.target.value) }))} />
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCapModal(false)}>Cancel</Button>
+            <Button onClick={addCapacity} disabled={!capForm.trade}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

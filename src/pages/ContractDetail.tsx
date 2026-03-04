@@ -10,11 +10,12 @@ import {
 } from '@/lib/contractStore';
 import { getEstimateLineItems } from '@/lib/store';
 import { recomputeContractWIP, computeCashForecast, computeTradeDrift, driftEntriesToFactors, type TradeDriftEntry } from '@/lib/contractEngine';
-import { computeSubcontractExposure } from '@/lib/phase5Engine';
+import { computeSubcontractExposure, propagateDelays, hasScheduleCompressionRisk } from '@/lib/phase5Engine';
 import { computeContractDataQuality } from '@/lib/reliabilityEngine';
 import {
   getSubcontracts, saveSubcontract, getSubcontractInvoices, getSchedulePhases,
   queueExecutionEvent, getLatestAdvisories, triggerIntelligenceProcessing,
+  saveSchedulePhase,
 } from '@/lib/phase5Store';
 import type { Subcontract, SchedulePhase, ExecutionEvent } from '@/lib/phase5Types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,7 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText, Brain, Zap } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText, Brain, Zap, Calendar, Clock } from 'lucide-react';
 import { generateContractPDF } from '@/lib/pdfGenerator';
 import { useToast } from '@/hooks/use-toast';
 
@@ -49,6 +50,8 @@ export default function ContractDetail() {
   const [coForm, setCoForm] = useState({ description: '', change_type: 'Scope Correction' as ChangeOrderType, delta_value: 0 });
   const [subModal, setSubModal] = useState(false);
   const [subForm, setSubForm] = useState({ vendor_name: '', trade: '', committed_cost: 0, estimated_trade_budget: 0 });
+  const [phaseModal, setPhaseModal] = useState(false);
+  const [phaseForm, setPhaseForm] = useState({ phase_name: '', planned_days: 0, planned_start: '', planned_finish: '', depends_on_phase: '' });
   const [overrideModal, setOverrideModal] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
@@ -342,6 +345,7 @@ export default function ContractDetail() {
           <TabsTrigger value="wip">Line-Item WIP</TabsTrigger>
           <TabsTrigger value="change-orders">Change Orders ({changeOrders.length})</TabsTrigger>
           <TabsTrigger value="subcontracts">Subcontracts ({subcontracts.length})</TabsTrigger>
+          <TabsTrigger value="schedule">Schedule{hasScheduleCompressionRisk(propagateDelays(schedulePhases)) ? ' ⚠' : ''} ({schedulePhases.length})</TabsTrigger>
           <TabsTrigger value="cash">Cash Forecast</TabsTrigger>
           <TabsTrigger value="drift">Trade Drift{driftEntries.some(d => d.alert) ? ' ⚠' : ''}</TabsTrigger>
           <TabsTrigger value="margin">Margin & Risk</TabsTrigger>
@@ -502,6 +506,63 @@ export default function ContractDetail() {
                   )}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Schedule Phases Tab */}
+        <TabsContent value="schedule" className="space-y-4">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setPhaseModal(true)}><Plus className="h-3 w-3 mr-1" />Add Phase</Button>
+          </div>
+          {hasScheduleCompressionRisk(propagateDelays(schedulePhases)) && (
+            <Card className="border-destructive/30">
+              <CardContent className="pt-3 pb-2 px-4">
+                <div className="flex items-center gap-2 text-destructive text-sm font-medium">
+                  <AlertTriangle className="h-4 w-4" />⚠ Schedule Compression Risk — One or more phases have delay_ratio &gt; 1.15x
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          <Card>
+            <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Calendar className="h-4 w-4" />Schedule Phases & Delay Propagation</CardTitle></CardHeader>
+            <CardContent>
+              {schedulePhases.length > 0 ? (() => {
+                const propagated = propagateDelays(schedulePhases);
+                return (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Phase</TableHead>
+                        <TableHead>Planned Days</TableHead>
+                        <TableHead>Actual Days</TableHead>
+                        <TableHead>Delay Ratio</TableHead>
+                        <TableHead>Depends On</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {propagated.map(p => (
+                        <TableRow key={p.id}>
+                          <TableCell className="font-medium">{p.phase_name}</TableCell>
+                          <TableCell>{p.planned_days}d</TableCell>
+                          <TableCell>{p.actual_days > 0 ? `${p.actual_days}d` : '—'}</TableCell>
+                          <TableCell>
+                            <span className={p.delay_ratio > 1.15 ? 'text-destructive font-bold' : p.delay_ratio > 1.0 ? 'text-amber-600' : ''}>
+                              {p.delay_ratio.toFixed(2)}x
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs">{p.depends_on_phase ? schedulePhases.find(s => s.id === p.depends_on_phase)?.phase_name || '—' : '—'}</TableCell>
+                          <TableCell><Badge variant={p.status === 'Completed' ? 'default' : p.status === 'In Progress' ? 'secondary' : 'outline'} className="text-xs">{p.status}</Badge></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                );
+              })() : (
+                <p className="text-center py-4 text-muted-foreground">No schedule phases defined. Add phases to track delay propagation.</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-3">Delay ratio = actual_days ÷ planned_days. Downstream phases auto-shift when parent delayed. Compression risk at &gt;1.15x.</p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -804,6 +865,58 @@ export default function ContractDetail() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setOverrideModal(false); setPendingAction(null); }}>Cancel</Button>
             <Button variant="destructive" onClick={executeOverride} disabled={!overrideReason.trim()}>Override & Proceed</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Schedule Phase Modal */}
+      <Dialog open={phaseModal} onOpenChange={setPhaseModal}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add Schedule Phase</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Phase Name</Label><Input value={phaseForm.phase_name} onChange={e => setPhaseForm(p => ({ ...p, phase_name: e.target.value }))} placeholder="e.g. Framing, Drywall, Paint" /></div>
+            <div><Label>Planned Days</Label><Input type="number" value={phaseForm.planned_days || ''} onChange={e => setPhaseForm(p => ({ ...p, planned_days: Number(e.target.value) }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Planned Start</Label><Input type="date" value={phaseForm.planned_start} onChange={e => setPhaseForm(p => ({ ...p, planned_start: e.target.value }))} /></div>
+              <div><Label>Planned Finish</Label><Input type="date" value={phaseForm.planned_finish} onChange={e => setPhaseForm(p => ({ ...p, planned_finish: e.target.value }))} /></div>
+            </div>
+            {schedulePhases.length > 0 && (
+              <div>
+                <Label>Depends On Phase</Label>
+                <Select value={phaseForm.depends_on_phase || 'none'} onValueChange={v => setPhaseForm(p => ({ ...p, depends_on_phase: v === 'none' ? '' : v }))}>
+                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {schedulePhases.map(sp => (
+                      <SelectItem key={sp.id} value={sp.id!}>{sp.phase_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPhaseModal(false)}>Cancel</Button>
+            <Button onClick={async () => {
+              if (!contract || !phaseForm.phase_name) return;
+              await saveSchedulePhase({
+                contract_id: contract.id!,
+                phase_name: phaseForm.phase_name,
+                planned_days: phaseForm.planned_days,
+                actual_days: 0,
+                delay_ratio: 1.0,
+                planned_start: phaseForm.planned_start || null,
+                planned_finish: phaseForm.planned_finish || null,
+                actual_start: null,
+                actual_finish: null,
+                depends_on_phase: phaseForm.depends_on_phase || null,
+                status: 'Not Started',
+              });
+              setPhaseModal(false);
+              setPhaseForm({ phase_name: '', planned_days: 0, planned_start: '', planned_finish: '', depends_on_phase: '' });
+              toast({ title: 'Schedule phase added' });
+              await load();
+            }} disabled={!phaseForm.phase_name}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
