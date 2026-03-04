@@ -2,6 +2,66 @@ import type { Contract, PaymentMilestone } from './contractTypes';
 import { PROFIT_FADE_THRESHOLD } from './contractTypes';
 import type { EstimateLineItem } from './types';
 
+export interface TradeDriftEntry {
+  trade: string;
+  estimated_cost: number;
+  actual_cost: number;
+  drift_factor: number; // actual / estimated
+  alert: boolean; // >1.12 or <0.90
+}
+
+/**
+ * Compute trade drift factors from completed contract line items.
+ * Groups by phase/trade, averages actual/estimated ratios.
+ */
+export function computeTradeDrift(completedLineItems: Array<{
+  phase: string;
+  labor_total: number;
+  material_total: number;
+  actual_labor_cost_to_date: number;
+  actual_material_cost_to_date: number;
+  wip_status: string;
+}>): TradeDriftEntry[] {
+  const tradeMap = new Map<string, { estimated: number; actual: number }>();
+
+  for (const li of completedLineItems) {
+    if (li.wip_status !== 'Completed') continue;
+    const estimated = li.labor_total + li.material_total;
+    const actual = li.actual_labor_cost_to_date + li.actual_material_cost_to_date;
+    if (estimated <= 0) continue;
+
+    const existing = tradeMap.get(li.phase) || { estimated: 0, actual: 0 };
+    existing.estimated += estimated;
+    existing.actual += actual;
+    tradeMap.set(li.phase, existing);
+  }
+
+  const entries: TradeDriftEntry[] = [];
+  for (const [trade, { estimated, actual }] of tradeMap) {
+    const drift_factor = Math.round((actual / estimated) * 1000) / 1000;
+    entries.push({
+      trade,
+      estimated_cost: Math.round(estimated * 100) / 100,
+      actual_cost: Math.round(actual * 100) / 100,
+      drift_factor,
+      alert: drift_factor > 1.12 || drift_factor < 0.90,
+    });
+  }
+
+  return entries.sort((a, b) => Math.abs(b.drift_factor - 1) - Math.abs(a.drift_factor - 1));
+}
+
+/**
+ * Convert TradeDriftEntry[] to Record<string, number> for use in WIP recompute.
+ */
+export function driftEntriesToFactors(entries: TradeDriftEntry[]): Record<string, number> {
+  const factors: Record<string, number> = {};
+  for (const e of entries) {
+    factors[e.trade] = e.drift_factor;
+  }
+  return factors;
+}
+
 /**
  * Compute weighted percent complete from line items.
  * percent_complete = Σ(line_total × line.percent_complete/100) / Σ(line_total) × 100
