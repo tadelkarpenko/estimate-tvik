@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { getRiskLibrary, saveRiskLibraryItem, deleteRiskLibraryItem, uid } from '@/lib/store';
+import { useState, useEffect, useCallback } from 'react';
+import { getRiskLibrary, saveRiskLibraryItem, deleteRiskLibraryItem, uid, initStore } from '@/lib/store';
 import type { RiskLibraryItem, ProjectType, RiskLevel } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,26 +19,37 @@ const emptyItem: Partial<RiskLibraryItem> = {
 };
 
 export default function RiskLibraryPage() {
-  const [refresh, setRefresh] = useState(0);
+  const [items, setItems] = useState<RiskLibraryItem[]>([]);
   const [filter, setFilter] = useState<string>('all');
   const [editing, setEditing] = useState<Partial<RiskLibraryItem> | null>(null);
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const items = useMemo(() => {
-    const all = getRiskLibrary();
-    return filter === 'all' ? all : all.filter(i => i.project_type === filter);
-  }, [refresh, filter]);
+  const load = useCallback(async () => {
+    await initStore();
+    const all = await getRiskLibrary();
+    setItems(all);
+    setLoading(false);
+  }, []);
 
-  const save = () => {
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = filter === 'all' ? items : items.filter(i => i.project_type === filter);
+
+  const save = async () => {
     if (!editing?.risk_name) return;
     const item: RiskLibraryItem = { ...emptyItem, ...editing, id: editing.id || uid() } as RiskLibraryItem;
-    saveRiskLibraryItem(item);
-    setOpen(false); setEditing(null); setRefresh(r => r + 1);
+    await saveRiskLibraryItem(item);
+    setOpen(false); setEditing(null); await load();
     toast({ title: 'Saved' });
   };
 
-  const del = (id: string) => { if (confirm('Delete?')) { deleteRiskLibraryItem(id); setRefresh(r => r + 1); } };
+  const del = async (id: string) => {
+    if (confirm('Delete?')) { await deleteRiskLibraryItem(id); await load(); }
+  };
+
+  if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
   return (
     <div className="space-y-4">
@@ -53,7 +64,7 @@ export default function RiskLibraryPage() {
             {editing && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Project Type</Label><Select value={editing.project_type} onValueChange={v => setEditing({ ...editing, project_type: v as ProjectType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem></SelectContent></Select></div>
+                  <div><Label>Project Type</Label><Select value={editing.project_type} onValueChange={v => setEditing({ ...editing, project_type: v as ProjectType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem><SelectItem value="Kitchen">Kitchen</SelectItem><SelectItem value="Small Job">Small Job</SelectItem></SelectContent></Select></div>
                   <div><Label>Default Level</Label><Select value={editing.default_level} onValueChange={v => setEditing({ ...editing, default_level: v as RiskLevel })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Low">Low</SelectItem><SelectItem value="Medium">Medium</SelectItem><SelectItem value="High">High</SelectItem></SelectContent></Select></div>
                 </div>
                 <div><Label>Risk Name</Label><Input value={editing.risk_name || ''} onChange={e => setEditing({ ...editing, risk_name: e.target.value })} /></div>
@@ -72,7 +83,7 @@ export default function RiskLibraryPage() {
 
       <Select value={filter} onValueChange={setFilter}>
         <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-        <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem></SelectContent>
+        <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem><SelectItem value="Kitchen">Kitchen</SelectItem><SelectItem value="Small Job">Small Job</SelectItem></SelectContent>
       </Select>
 
       <Card>
@@ -80,7 +91,7 @@ export default function RiskLibraryPage() {
           <Table>
             <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Risk</TableHead><TableHead>Level</TableHead><TableHead className="text-right">Low %</TableHead><TableHead className="text-right">High %</TableHead><TableHead>Mitigation</TableHead><TableHead>Incl</TableHead><TableHead></TableHead></TableRow></TableHeader>
             <TableBody>
-              {items.map(item => (
+              {filtered.map(item => (
                 <TableRow key={item.id}>
                   <TableCell className="text-sm">{item.project_type}</TableCell>
                   <TableCell className="font-medium">{item.risk_name}</TableCell>

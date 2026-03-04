@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Estimate, EstimateStatus, ProjectType, FinishLevel } from '@/lib/types';
-import { getEstimate, saveEstimate, nextEstimateId, uid, getCostLibrary, getRiskLibrary, getRevisionLogs, saveRevisionLog } from '@/lib/store';
+import { getEstimate, saveEstimate, nextEstimateId, uid, getCostLibrary, getRiskLibrary, getRevisionLogs, saveRevisionLog, updateEstimateStatus, initStore } from '@/lib/store';
 import { runCostEngine } from '@/lib/costEngine';
 import { runRiskEngine } from '@/lib/riskEngine';
 import { generateAssumptions, generateTimeline, generateScopeAI, generateAuditAI } from '@/lib/generators';
@@ -17,8 +17,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, Copy, FileDown } from 'lucide-react';
+import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import type { EstimateRevisionLog } from '@/lib/types';
 
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
@@ -39,18 +40,28 @@ export default function NewEstimate() {
   const [form, setForm] = useState<Partial<Estimate>>({ ...defaultEst });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [advOpen, setAdvOpen] = useState(false);
+  const [revisions, setRevisions] = useState<EstimateRevisionLog[]>([]);
+  const [loading, setLoading] = useState(true);
   const isEdit = !!id;
 
   useEffect(() => {
-    if (id) {
-      const existing = getEstimate(id);
-      if (existing) setForm(existing);
-      else navigate('/estimates', { replace: true });
-    }
+    (async () => {
+      await initStore();
+      if (id) {
+        const existing = await getEstimate(id);
+        if (existing) {
+          setForm(existing);
+          const revs = await getRevisionLogs(id);
+          setRevisions(revs);
+        } else {
+          navigate('/estimates', { replace: true });
+        }
+      }
+      setLoading(false);
+    })();
   }, [id]);
 
   const update = (updates: Partial<Estimate>) => setForm(prev => ({ ...prev, ...updates }));
-  const revisions = useMemo(() => getRevisionLogs(form.estimate_id), [form.estimate_id, form.version]);
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -63,14 +74,15 @@ export default function NewEstimate() {
     return Object.keys(errs).length === 0;
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
+    const estId = form.estimate_id || await nextEstimateId();
     const est: Estimate = {
       ...defaultEst, ...form,
-      estimate_id: form.estimate_id || nextEstimateId(),
+      estimate_id: estId,
       created_at: form.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     } as Estimate;
-    saveEstimate(est);
+    await saveEstimate(est);
     update({ estimate_id: est.estimate_id, created_at: est.created_at });
     toast({ title: 'Draft saved', description: est.estimate_id });
   };
@@ -82,8 +94,8 @@ export default function NewEstimate() {
     setGenerating(true);
 
     try {
-      const costLib = getCostLibrary();
-      const riskLib = getRiskLibrary();
+      const costLib = await getCostLibrary();
+      const riskLib = await getRiskLibrary();
       const costResult = runCostEngine({
         project_type: form.project_type as ProjectType, sqft: form.sqft!, fixture_count: form.fixture_count || 0,
         labor_hours: form.labor_hours || 0,
@@ -106,13 +118,11 @@ export default function NewEstimate() {
       merged.assumptions_rich = generateAssumptions(merged);
       merged.timeline_rich = generateTimeline(merged);
 
-      // Save deterministic results first
-      const estId = merged.estimate_id || nextEstimateId();
+      const estId = merged.estimate_id || await nextEstimateId();
       merged.estimate_id = estId;
       merged.created_at = merged.created_at || new Date().toISOString();
       merged.status = 'Ready' as EstimateStatus;
 
-      // Run AI in parallel
       toast({ title: 'Running AI analysis...', description: 'Generating scope & audit via AI' });
       const [scope, audit] = await Promise.all([
         generateScopeAI(merged),
@@ -124,7 +134,7 @@ export default function NewEstimate() {
       const est: Estimate = {
         ...defaultEst, ...merged, updated_at: new Date().toISOString(),
       } as Estimate;
-      saveEstimate(est);
+      await saveEstimate(est);
       setForm(est);
       toast({ title: 'Estimate generated', description: `${est.estimate_id} — $${est.total_low.toLocaleString()} – $${est.total_high.toLocaleString()}` });
     } catch (e) {
@@ -135,33 +145,44 @@ export default function NewEstimate() {
     }
   };
 
-  const createRevision = () => {
+  const createRevision = async () => {
     const summary = prompt('Change summary (required):');
     if (!summary) return;
     const prevVersion = form.version || 'v1.0';
     const parts = prevVersion.replace('v', '').split('.');
     const newVersion = `v${parts[0]}.${parseInt(parts[1] || '0') + 1}`;
-    saveRevisionLog({
+    await saveRevisionLog({
       id: uid(), estimate_id: form.estimate_id!, created_at: new Date().toISOString(),
       version: prevVersion, change_summary: summary, snapshot_json: JSON.stringify(form),
       delta_low: 0, delta_high: 0,
     });
     update({ version: newVersion, last_revision_summary: summary });
+    const revs = await getRevisionLogs(form.estimate_id);
+    setRevisions(revs);
     toast({ title: 'Revision created', description: newVersion });
   };
 
-  const duplicate = () => {
-    const newId = nextEstimateId();
+  const duplicate = async () => {
+    const newId = await nextEstimateId();
     const dup: Estimate = { ...defaultEst, ...form, estimate_id: newId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: 'Draft', version: 'v1.0' } as Estimate;
-    saveEstimate(dup);
+    await saveEstimate(dup);
     navigate(`/estimates/${newId}`);
     toast({ title: 'Estimate duplicated', description: newId });
+  };
+
+  const setStatus = async (status: EstimateStatus) => {
+    if (!form.estimate_id) return;
+    await updateEstimateStatus(form.estimate_id, status);
+    update({ status });
+    toast({ title: `Marked as ${status}` });
   };
 
   const lineItems = form.line_items_json ? JSON.parse(form.line_items_json) : [];
   const costStructure = form.cost_structure_json ? JSON.parse(form.cost_structure_json) : [];
   const riskTable = form.risk_table_json ? JSON.parse(form.risk_table_json) : [];
   const fmt = (n?: number) => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -277,6 +298,27 @@ export default function NewEstimate() {
           </>
         )}
       </div>
+
+      {/* Status Workflow Buttons */}
+      {form.estimate_id && form.status !== 'Draft' && (
+        <div className="flex flex-wrap gap-2">
+          {form.status !== 'Sent' && (
+            <Button variant="outline" onClick={() => setStatus('Sent')} className="text-blue-600 border-blue-300 hover:bg-blue-50">
+              <Send className="mr-1 h-4 w-4" />Mark as Sent
+            </Button>
+          )}
+          {form.status !== 'Accepted' && (
+            <Button variant="outline" onClick={() => setStatus('Accepted')} className="text-green-600 border-green-300 hover:bg-green-50">
+              <CheckCircle className="mr-1 h-4 w-4" />Mark as Accepted
+            </Button>
+          )}
+          {form.status !== 'Rejected' && (
+            <Button variant="outline" onClick={() => setStatus('Rejected')} className="text-red-600 border-red-300 hover:bg-red-50">
+              <XCircle className="mr-1 h-4 w-4" />Mark as Rejected
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Output Panels */}
       {form.subtotal! > 0 && (

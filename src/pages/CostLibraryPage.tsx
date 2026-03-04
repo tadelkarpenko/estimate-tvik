@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { getCostLibrary, saveCostLibraryItem, deleteCostLibraryItem, uid } from '@/lib/store';
+import { useState, useEffect, useCallback } from 'react';
+import { getCostLibrary, saveCostLibraryItem, deleteCostLibraryItem, uid, initStore } from '@/lib/store';
 import type { CostLibraryItem, ProjectType, QtyRule } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -18,32 +18,42 @@ const emptyItem: Partial<CostLibraryItem> = {
 };
 
 export default function CostLibraryPage() {
-  const [refresh, setRefresh] = useState(0);
+  const [items, setItems] = useState<CostLibraryItem[]>([]);
   const [filter, setFilter] = useState<string>('all');
   const [editing, setEditing] = useState<Partial<CostLibraryItem> | null>(null);
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const items = useMemo(() => {
-    const all = getCostLibrary();
-    return filter === 'all' ? all : all.filter(i => i.project_type === filter);
-  }, [refresh, filter]);
+  const load = useCallback(async () => {
+    await initStore();
+    const all = await getCostLibrary();
+    setItems(all);
+    setLoading(false);
+  }, []);
 
-  const save = () => {
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = filter === 'all' ? items : items.filter(i => i.project_type === filter);
+
+  const save = async () => {
     if (!editing?.trade) return;
     const item: CostLibraryItem = {
       ...emptyItem, ...editing,
       id: editing.id || uid(),
       last_updated: new Date().toISOString().split('T')[0],
     } as CostLibraryItem;
-    saveCostLibraryItem(item);
-    setOpen(false);
-    setEditing(null);
-    setRefresh(r => r + 1);
+    await saveCostLibraryItem(item);
+    setOpen(false); setEditing(null);
+    await load();
     toast({ title: 'Saved' });
   };
 
-  const del = (id: string) => { if (confirm('Delete?')) { deleteCostLibraryItem(id); setRefresh(r => r + 1); } };
+  const del = async (id: string) => {
+    if (confirm('Delete?')) { await deleteCostLibraryItem(id); await load(); }
+  };
+
+  if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
   return (
     <div className="space-y-4">
@@ -58,8 +68,8 @@ export default function CostLibraryPage() {
             {editing && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Project Type</Label><Select value={editing.project_type} onValueChange={v => setEditing({ ...editing, project_type: v as ProjectType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem></SelectContent></Select></div>
-                  <div><Label>Qty Rule</Label><Select value={editing.qty_rule} onValueChange={v => setEditing({ ...editing, qty_rule: v as QtyRule })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="sqft">sqft</SelectItem><SelectItem value="fixture">fixture</SelectItem><SelectItem value="lump_sum">lump_sum</SelectItem><SelectItem value="each">each</SelectItem><SelectItem value="lf">lf</SelectItem></SelectContent></Select></div>
+                  <div><Label>Project Type</Label><Select value={editing.project_type} onValueChange={v => setEditing({ ...editing, project_type: v as ProjectType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem><SelectItem value="Kitchen">Kitchen</SelectItem><SelectItem value="Small Job">Small Job</SelectItem></SelectContent></Select></div>
+                  <div><Label>Qty Rule</Label><Select value={editing.qty_rule} onValueChange={v => setEditing({ ...editing, qty_rule: v as QtyRule })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="sqft">sqft</SelectItem><SelectItem value="fixture">fixture</SelectItem><SelectItem value="lump_sum">lump_sum</SelectItem><SelectItem value="each">each</SelectItem><SelectItem value="lf">lf</SelectItem><SelectItem value="hour">hour</SelectItem></SelectContent></Select></div>
                 </div>
                 <div><Label>Trade</Label><Input value={editing.trade || ''} onChange={e => setEditing({ ...editing, trade: e.target.value })} /></div>
                 <div><Label>Description</Label><Input value={editing.description || ''} onChange={e => setEditing({ ...editing, description: e.target.value })} /></div>
@@ -79,7 +89,7 @@ export default function CostLibraryPage() {
 
       <Select value={filter} onValueChange={setFilter}>
         <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-        <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem></SelectContent>
+        <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem><SelectItem value="Kitchen">Kitchen</SelectItem><SelectItem value="Small Job">Small Job</SelectItem></SelectContent>
       </Select>
 
       <Card>
@@ -88,7 +98,7 @@ export default function CostLibraryPage() {
             <Table>
               <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Trade</TableHead><TableHead>Desc</TableHead><TableHead>Rule</TableHead><TableHead className="text-right">Labor</TableHead><TableHead className="text-right">Material</TableHead><TableHead>Unit</TableHead><TableHead>Incl</TableHead><TableHead>Updated</TableHead><TableHead></TableHead></TableRow></TableHeader>
               <TableBody>
-                {items.map(item => (
+                {filtered.map(item => (
                   <TableRow key={item.id}>
                     <TableCell className="text-sm">{item.project_type}</TableCell>
                     <TableCell className="font-medium">{item.trade}</TableCell>

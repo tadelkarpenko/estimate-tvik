@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getEstimates, deleteEstimate, saveEstimate, nextEstimateId } from '@/lib/store';
 import type { Estimate } from '@/lib/types';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Trash2, Copy, FileDown, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -16,32 +16,41 @@ export default function EstimatesList() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [refresh, setRefresh] = useState(0);
+  const [estimates, setEstimates] = useState<Estimate[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const estimates = useMemo(() => {
-    let list = getEstimates();
-    if (search) list = list.filter(e => `${e.estimate_id} ${e.project_name} ${e.client_name} ${e.city}`.toLowerCase().includes(search.toLowerCase()));
-    if (typeFilter !== 'all') list = list.filter(e => e.project_type === typeFilter);
-    if (statusFilter !== 'all') list = list.filter(e => e.status === statusFilter);
-    return list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-  }, [search, typeFilter, statusFilter, refresh]);
+  const load = useCallback(async () => {
+    const all = await getEstimates();
+    setEstimates(all);
+    setLoading(false);
+  }, []);
 
-  const dup = (est: Estimate) => {
-    const newId = nextEstimateId();
-    saveEstimate({ ...est, estimate_id: newId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: 'Draft', version: 'v1.0' });
-    setRefresh(r => r + 1);
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = estimates
+    .filter(e => !search || `${e.estimate_id} ${e.project_name} ${e.client_name} ${e.city}`.toLowerCase().includes(search.toLowerCase()))
+    .filter(e => typeFilter === 'all' || e.project_type === typeFilter)
+    .filter(e => statusFilter === 'all' || e.status === statusFilter)
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+  const dup = async (est: Estimate) => {
+    const newId = await nextEstimateId();
+    await saveEstimate({ ...est, estimate_id: newId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: 'Draft', version: 'v1.0' });
+    await load();
     toast({ title: 'Duplicated', description: newId });
   };
 
-  const del = (id: string) => {
+  const del = async (id: string) => {
     if (!confirm('Delete this estimate?')) return;
-    deleteEstimate(id);
-    setRefresh(r => r + 1);
+    await deleteEstimate(id);
+    await load();
   };
 
   const fmt = (n: number) => '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
   return (
     <div className="space-y-4">
@@ -54,7 +63,7 @@ export default function EstimatesList() {
         <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Type" /></SelectTrigger>
-          <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem></SelectContent>
+          <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem><SelectItem value="Kitchen">Kitchen</SelectItem><SelectItem value="Small Job">Small Job</SelectItem></SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -72,7 +81,7 @@ export default function EstimatesList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {estimates.map(e => (
+              {filtered.map(e => (
                 <TableRow key={e.estimate_id} className="cursor-pointer" onClick={() => navigate(`/estimates/${e.estimate_id}`)}>
                   <TableCell className="font-mono text-sm">{e.estimate_id}</TableCell>
                   <TableCell className="font-medium">{e.project_name || '—'}</TableCell>
@@ -92,7 +101,7 @@ export default function EstimatesList() {
                   </TableCell>
                 </TableRow>
               ))}
-              {estimates.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No estimates found</TableCell></TableRow>}
+              {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No estimates found</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>

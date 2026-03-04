@@ -1,161 +1,335 @@
+import { supabase } from '@/integrations/supabase/client';
 import type { Estimate, CostLibraryItem, RiskLibraryItem, EstimateRevisionLog, CostAudit } from './types';
 
-const KEYS = {
-  ESTIMATES: 'tvik_estimates',
-  COST_LIBRARY: 'tvik_cost_library',
-  RISK_LIBRARY: 'tvik_risk_library',
-  REVISION_LOGS: 'tvik_revision_logs',
-  COST_AUDITS: 'tvik_cost_audits',
+// ─── Helpers ───
+const getUserId = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  return user.id;
 };
 
-function get<T>(key: string): T[] {
-  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
-}
-function set<T>(key: string, data: T[]) { localStorage.setItem(key, JSON.stringify(data)); }
-
-// Estimates
-export const getEstimates = (): Estimate[] => get(KEYS.ESTIMATES);
-export const getEstimate = (id: string) => getEstimates().find(e => e.estimate_id === id);
-export const saveEstimate = (est: Estimate) => {
-  const all = getEstimates();
-  const idx = all.findIndex(e => e.estimate_id === est.estimate_id);
-  est.updated_at = new Date().toISOString();
-  if (idx >= 0) all[idx] = est; else all.push(est);
-  set(KEYS.ESTIMATES, all);
-};
-export const deleteEstimate = (id: string) => set(KEYS.ESTIMATES, getEstimates().filter(e => e.estimate_id !== id));
-
-// Cost Library
-export const getCostLibrary = (): CostLibraryItem[] => get(KEYS.COST_LIBRARY);
-export const saveCostLibraryItem = (item: CostLibraryItem) => {
-  const all = getCostLibrary();
-  const idx = all.findIndex(i => i.id === item.id);
-  if (idx >= 0) all[idx] = item; else all.push(item);
-  set(KEYS.COST_LIBRARY, all);
-};
-export const deleteCostLibraryItem = (id: string) => set(KEYS.COST_LIBRARY, getCostLibrary().filter(i => i.id !== id));
-
-// Risk Library
-export const getRiskLibrary = (): RiskLibraryItem[] => get(KEYS.RISK_LIBRARY);
-export const saveRiskLibraryItem = (item: RiskLibraryItem) => {
-  const all = getRiskLibrary();
-  const idx = all.findIndex(i => i.id === item.id);
-  if (idx >= 0) all[idx] = item; else all.push(item);
-  set(KEYS.RISK_LIBRARY, all);
-};
-export const deleteRiskLibraryItem = (id: string) => set(KEYS.RISK_LIBRARY, getRiskLibrary().filter(i => i.id !== id));
-
-// Revision Logs
-export const getRevisionLogs = (estimateId?: string): EstimateRevisionLog[] => {
-  const all: EstimateRevisionLog[] = get(KEYS.REVISION_LOGS);
-  return estimateId ? all.filter(r => r.estimate_id === estimateId) : all;
-};
-export const saveRevisionLog = (log: EstimateRevisionLog) => {
-  const all = getRevisionLogs();
-  all.push(log);
-  set(KEYS.REVISION_LOGS, all);
-};
-
-// Cost Audits
-export const getCostAudits = (estimateId?: string): CostAudit[] => {
-  const all: CostAudit[] = get(KEYS.COST_AUDITS);
-  return estimateId ? all.filter(a => a.estimate_id === estimateId) : all;
-};
-export const saveCostAudit = (audit: CostAudit) => {
-  const all: CostAudit[] = get(KEYS.COST_AUDITS);
-  const idx = all.findIndex(a => a.id === audit.id);
-  if (idx >= 0) all[idx] = audit; else all.push(audit);
-  set(KEYS.COST_AUDITS, all);
-};
-
-// ID generation
-let counter = parseInt(localStorage.getItem('tvik_id_counter') || '0', 10);
-export const nextEstimateId = () => {
-  counter++;
-  localStorage.setItem('tvik_id_counter', String(counter));
-  return `EST-${String(counter).padStart(4, '0')}`;
-};
 export const uid = () => crypto.randomUUID();
 
-// Seed data
-const SEED_COST_LIBRARY: CostLibraryItem[] = [
-  { id: uid(), project_type: 'Bath', trade: 'Demo & Prep', description: 'Protect, demo, haul', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 650, material_unit_cost: 75, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Plumbing', description: 'Rough + trim (allowance)', qty_rule: 'fixture', default_included: true, labor_unit_cost: 380, material_unit_cost: 140, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Electrical', description: 'Bath circuits/fixtures allowance', qty_rule: 'fixture', default_included: true, labor_unit_cost: 220, material_unit_cost: 90, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Drywall', description: 'Hang/tape/finish patch areas', qty_rule: 'sqft', default_included: true, labor_unit_cost: 3.25, material_unit_cost: 1.15, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Tile Setting Materials', description: 'Thinset/grout/consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 1.75, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Tile Labor', description: 'Tile install labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 9.50, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Paint Materials', description: 'Primer/paint supplies', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.55, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Paint Labor', description: 'Paint labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.90, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Bath', trade: 'Decorative Fixtures', description: 'Mirror/vanity light allowance', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 250, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Demo & Protection', description: 'Selective demo + protect', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.10, material_unit_cost: 0.20, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Framing', description: 'Repairs allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.40, material_unit_cost: 0.60, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Electrical', description: 'Rehab allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.85, material_unit_cost: 0.65, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Plumbing', description: 'Rehab allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.60, material_unit_cost: 0.70, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'HVAC', description: 'Allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0.85, material_unit_cost: 0.65, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Drywall', description: 'Hang/tape/finish', qty_rule: 'sqft', default_included: true, labor_unit_cost: 2.95, material_unit_cost: 1.05, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Flooring Underlayment/Consumables', description: 'Underlayment + consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.55, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Flooring Labor', description: 'Install labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 2.75, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Paint Materials', description: 'Primer/paint supplies', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.45, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Full Rehab', trade: 'Paint Labor', description: 'Paint labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.35, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  // Kitchen
-  { id: uid(), project_type: 'Kitchen', trade: 'Demo & Prep', description: 'Protect, demo cabinets/counters, haul', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 950, material_unit_cost: 120, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Plumbing', description: 'Rough + trim (sink, dishwasher, gas)', qty_rule: 'fixture', default_included: true, labor_unit_cost: 420, material_unit_cost: 160, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Electrical', description: 'Circuits, outlets, lighting allowance', qty_rule: 'fixture', default_included: true, labor_unit_cost: 280, material_unit_cost: 110, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Drywall', description: 'Patch & finish after demo', qty_rule: 'sqft', default_included: true, labor_unit_cost: 3.00, material_unit_cost: 1.10, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Cabinets', description: 'Cabinet install labor', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 1800, material_unit_cost: 0, unit_label: 'ls', notes: 'Owner-supplied cabinets assumed', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Countertops', description: 'Countertop template & install', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 650, material_unit_cost: 0, unit_label: 'ls', notes: 'Owner-supplied countertop assumed', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Tile Setting Materials', description: 'Backsplash thinset/grout/consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 1.85, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Tile Labor', description: 'Backsplash tile install', qty_rule: 'sqft', default_included: true, labor_unit_cost: 10.00, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Flooring Underlayment/Consumables', description: 'Underlayment + consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.55, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Flooring Labor', description: 'Flooring install labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 2.85, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Paint Materials', description: 'Primer/paint supplies', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.50, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Paint Labor', description: 'Paint labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.75, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Appliance Hookup', description: 'Gas/electric appliance connections', qty_rule: 'fixture', default_included: true, labor_unit_cost: 175, material_unit_cost: 35, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Kitchen', trade: 'Decorative Fixtures', description: 'Hardware, lighting allowance', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 350, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  // Small Job (hourly labor + material lump sums)
-  { id: uid(), project_type: 'Small Job', trade: 'General Labor', description: 'Handyman labor (hourly)', qty_rule: 'hour', default_included: true, labor_unit_cost: 75, material_unit_cost: 0, unit_label: 'hr', notes: 'Mixed trades', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Small Job', trade: 'Drywall Patch', description: 'Drywall patch & repair materials', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 85, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Small Job', trade: 'Paint Materials', description: 'Touch-up paint supplies', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 65, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Small Job', trade: 'Minor Plumbing', description: 'Fixture swap / repair materials', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 95, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Small Job', trade: 'Minor Electrical', description: 'Outlet/switch/fixture materials', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 75, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
-  { id: uid(), project_type: 'Small Job', trade: 'Caulking & Sealant', description: 'Caulk and sealant supplies', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 35, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+// ─── Estimates ───
+export const getEstimates = async (): Promise<Estimate[]> => {
+  const { data, error } = await supabase.from('estimates').select('*').order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(rowToEstimate);
+};
+
+export const getEstimate = async (estimateId: string): Promise<Estimate | undefined> => {
+  const { data, error } = await supabase.from('estimates').select('*').eq('estimate_id', estimateId).maybeSingle();
+  if (error) throw error;
+  return data ? rowToEstimate(data) : undefined;
+};
+
+export const saveEstimate = async (est: Estimate): Promise<void> => {
+  const userId = await getUserId();
+  const row = estimateToRow(est, userId);
+  // Upsert by user_id + estimate_id
+  const { error } = await supabase.from('estimates').upsert(row, { onConflict: 'user_id,estimate_id' });
+  if (error) throw error;
+};
+
+export const deleteEstimate = async (estimateId: string): Promise<void> => {
+  const { error } = await supabase.from('estimates').delete().eq('estimate_id', estimateId);
+  if (error) throw error;
+};
+
+export const updateEstimateStatus = async (estimateId: string, status: string): Promise<void> => {
+  const { error } = await supabase.from('estimates').update({ status, updated_at: new Date().toISOString() }).eq('estimate_id', estimateId);
+  if (error) throw error;
+};
+
+// ─── Cost Library ───
+export const getCostLibrary = async (): Promise<CostLibraryItem[]> => {
+  const { data, error } = await supabase.from('cost_library').select('*').order('project_type').order('trade');
+  if (error) throw error;
+  return (data || []).map(rowToCostItem);
+};
+
+export const saveCostLibraryItem = async (item: CostLibraryItem): Promise<void> => {
+  const userId = await getUserId();
+  const { error } = await supabase.from('cost_library').upsert({
+    id: item.id, user_id: userId, project_type: item.project_type, trade: item.trade,
+    description: item.description, qty_rule: item.qty_rule, default_included: item.default_included,
+    labor_unit_cost: item.labor_unit_cost, material_unit_cost: item.material_unit_cost,
+    unit_label: item.unit_label, notes: item.notes, last_updated: item.last_updated,
+  });
+  if (error) throw error;
+};
+
+export const deleteCostLibraryItem = async (id: string): Promise<void> => {
+  const { error } = await supabase.from('cost_library').delete().eq('id', id);
+  if (error) throw error;
+};
+
+// ─── Risk Library ───
+export const getRiskLibrary = async (): Promise<RiskLibraryItem[]> => {
+  const { data, error } = await supabase.from('risk_library').select('*').order('project_type').order('risk_name');
+  if (error) throw error;
+  return (data || []).map(rowToRiskItem);
+};
+
+export const saveRiskLibraryItem = async (item: RiskLibraryItem): Promise<void> => {
+  const userId = await getUserId();
+  const { error } = await supabase.from('risk_library').upsert({
+    id: item.id, user_id: userId, project_type: item.project_type, risk_name: item.risk_name,
+    default_level: item.default_level, exposure_low_pct: item.exposure_low_pct,
+    exposure_high_pct: item.exposure_high_pct, mitigation_note: item.mitigation_note,
+    default_included: item.default_included,
+  });
+  if (error) throw error;
+};
+
+export const deleteRiskLibraryItem = async (id: string): Promise<void> => {
+  const { error } = await supabase.from('risk_library').delete().eq('id', id);
+  if (error) throw error;
+};
+
+// ─── Revision Logs ───
+export const getRevisionLogs = async (estimateId?: string): Promise<EstimateRevisionLog[]> => {
+  let q = supabase.from('revision_logs').select('*').order('created_at', { ascending: false });
+  if (estimateId) q = q.eq('estimate_id', estimateId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data || []).map(r => ({
+    id: r.id, estimate_id: r.estimate_id, created_at: r.created_at,
+    version: r.version, change_summary: r.change_summary,
+    snapshot_json: r.snapshot_json, delta_low: Number(r.delta_low), delta_high: Number(r.delta_high),
+  }));
+};
+
+export const saveRevisionLog = async (log: EstimateRevisionLog): Promise<void> => {
+  const userId = await getUserId();
+  const { error } = await supabase.from('revision_logs').insert({
+    id: log.id, user_id: userId, estimate_id: log.estimate_id,
+    version: log.version, change_summary: log.change_summary,
+    snapshot_json: log.snapshot_json, delta_low: log.delta_low, delta_high: log.delta_high,
+  });
+  if (error) throw error;
+};
+
+// ─── Cost Audits ───
+export const getCostAudits = async (estimateId?: string): Promise<CostAudit[]> => {
+  let q = supabase.from('cost_audits').select('*').order('created_at', { ascending: false });
+  if (estimateId) q = q.eq('estimate_id', estimateId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data || []).map(r => ({
+    id: r.id, estimate_id: r.estimate_id, created_at: r.created_at,
+    findings_json: r.findings_json, recommended_actions: r.recommended_actions, status: r.status as any,
+  }));
+};
+
+export const saveCostAudit = async (audit: CostAudit): Promise<void> => {
+  const userId = await getUserId();
+  const { error } = await supabase.from('cost_audits').upsert({
+    id: audit.id, user_id: userId, estimate_id: audit.estimate_id,
+    findings_json: audit.findings_json, recommended_actions: audit.recommended_actions, status: audit.status,
+  });
+  if (error) throw error;
+};
+
+// ─── Estimate Counter ───
+export const nextEstimateId = async (): Promise<string> => {
+  const userId = await getUserId();
+  // Try to increment
+  const { data: existing } = await supabase.from('estimate_counter').select('counter').eq('user_id', userId).maybeSingle();
+  const newCounter = (existing?.counter || 0) + 1;
+  await supabase.from('estimate_counter').upsert({ user_id: userId, counter: newCounter }, { onConflict: 'user_id' });
+  return `EST-${String(newCounter).padStart(4, '0')}`;
+};
+
+// ─── Seed data ───
+const SEED_COST_LIBRARY: Omit<CostLibraryItem, 'id'>[] = [
+  { project_type: 'Bath', trade: 'Demo & Prep', description: 'Protect, demo, haul', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 650, material_unit_cost: 75, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Plumbing', description: 'Rough + trim (allowance)', qty_rule: 'fixture', default_included: true, labor_unit_cost: 380, material_unit_cost: 140, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Electrical', description: 'Bath circuits/fixtures allowance', qty_rule: 'fixture', default_included: true, labor_unit_cost: 220, material_unit_cost: 90, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Drywall', description: 'Hang/tape/finish patch areas', qty_rule: 'sqft', default_included: true, labor_unit_cost: 3.25, material_unit_cost: 1.15, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Tile Setting Materials', description: 'Thinset/grout/consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 1.75, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Tile Labor', description: 'Tile install labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 9.50, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Paint Materials', description: 'Primer/paint supplies', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.55, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Paint Labor', description: 'Paint labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.90, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Bath', trade: 'Decorative Fixtures', description: 'Mirror/vanity light allowance', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 250, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Demo & Protection', description: 'Selective demo + protect', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.10, material_unit_cost: 0.20, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Framing', description: 'Repairs allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.40, material_unit_cost: 0.60, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Electrical', description: 'Rehab allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.85, material_unit_cost: 0.65, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Plumbing', description: 'Rehab allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.60, material_unit_cost: 0.70, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'HVAC', description: 'Allowance', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0.85, material_unit_cost: 0.65, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Drywall', description: 'Hang/tape/finish', qty_rule: 'sqft', default_included: true, labor_unit_cost: 2.95, material_unit_cost: 1.05, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Flooring Underlayment/Consumables', description: 'Underlayment + consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.55, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Flooring Labor', description: 'Install labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 2.75, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Paint Materials', description: 'Primer/paint supplies', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.45, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Full Rehab', trade: 'Paint Labor', description: 'Paint labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.35, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Demo & Prep', description: 'Protect, demo cabinets/counters, haul', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 950, material_unit_cost: 120, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Plumbing', description: 'Rough + trim (sink, dishwasher, gas)', qty_rule: 'fixture', default_included: true, labor_unit_cost: 420, material_unit_cost: 160, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Electrical', description: 'Circuits, outlets, lighting allowance', qty_rule: 'fixture', default_included: true, labor_unit_cost: 280, material_unit_cost: 110, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Drywall', description: 'Patch & finish after demo', qty_rule: 'sqft', default_included: true, labor_unit_cost: 3.00, material_unit_cost: 1.10, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Cabinets', description: 'Cabinet install labor', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 1800, material_unit_cost: 0, unit_label: 'ls', notes: 'Owner-supplied cabinets assumed', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Countertops', description: 'Countertop template & install', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 650, material_unit_cost: 0, unit_label: 'ls', notes: 'Owner-supplied countertop assumed', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Tile Setting Materials', description: 'Backsplash thinset/grout/consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 1.85, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Tile Labor', description: 'Backsplash tile install', qty_rule: 'sqft', default_included: true, labor_unit_cost: 10.00, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Flooring Underlayment/Consumables', description: 'Underlayment + consumables', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.55, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Flooring Labor', description: 'Flooring install labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 2.85, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Paint Materials', description: 'Primer/paint supplies', qty_rule: 'sqft', default_included: true, labor_unit_cost: 0, material_unit_cost: 0.50, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Paint Labor', description: 'Paint labor', qty_rule: 'sqft', default_included: true, labor_unit_cost: 1.75, material_unit_cost: 0, unit_label: 'sf', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Appliance Hookup', description: 'Gas/electric appliance connections', qty_rule: 'fixture', default_included: true, labor_unit_cost: 175, material_unit_cost: 35, unit_label: 'fixture', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Kitchen', trade: 'Decorative Fixtures', description: 'Hardware, lighting allowance', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 350, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Small Job', trade: 'General Labor', description: 'Handyman labor (hourly)', qty_rule: 'hour', default_included: true, labor_unit_cost: 75, material_unit_cost: 0, unit_label: 'hr', notes: 'Mixed trades', last_updated: '2025-01-01' },
+  { project_type: 'Small Job', trade: 'Drywall Patch', description: 'Drywall patch & repair materials', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 85, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Small Job', trade: 'Paint Materials', description: 'Touch-up paint supplies', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 65, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Small Job', trade: 'Minor Plumbing', description: 'Fixture swap / repair materials', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 95, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Small Job', trade: 'Minor Electrical', description: 'Outlet/switch/fixture materials', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 75, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
+  { project_type: 'Small Job', trade: 'Caulking & Sealant', description: 'Caulk and sealant supplies', qty_rule: 'lump_sum', default_included: true, labor_unit_cost: 0, material_unit_cost: 35, unit_label: 'ls', notes: '', last_updated: '2025-01-01' },
 ];
 
-const SEED_RISK_LIBRARY: RiskLibraryItem[] = [
-  { id: uid(), project_type: 'Bath', risk_name: 'Hidden plumbing/electrical', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.06, mitigation_note: 'Field verify + allowance; CO if discovered', default_included: true },
-  { id: uid(), project_type: 'Bath', risk_name: 'Subfloor damage', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.05, mitigation_note: 'Inspect after demo; repair allowance', default_included: true },
-  { id: uid(), project_type: 'Bath', risk_name: 'Permit/inspection delays', default_level: 'Low', exposure_low_pct: 0.01, exposure_high_pct: 0.03, mitigation_note: 'Submit early; schedule buffers', default_included: true },
-  { id: uid(), project_type: 'Full Rehab', risk_name: 'Structural reframing', default_level: 'High', exposure_low_pct: 0.03, exposure_high_pct: 0.10, mitigation_note: 'Open walls early; engineer if needed; CO protection', default_included: true },
-  { id: uid(), project_type: 'Full Rehab', risk_name: 'MEP unknowns', default_level: 'Medium', exposure_low_pct: 0.03, exposure_high_pct: 0.07, mitigation_note: 'Early rough inspections; upgrade allowances', default_included: true },
-  { id: uid(), project_type: 'Full Rehab', risk_name: 'Material lead times', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.05, mitigation_note: 'Order long-leads early; alternates list', default_included: true },
-  { id: uid(), project_type: 'Full Rehab', risk_name: 'City inspection cycle', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.06, mitigation_note: 'Buffer schedule; staged inspections', default_included: true },
-  // Kitchen risks
-  { id: uid(), project_type: 'Kitchen', risk_name: 'Hidden plumbing/gas issues', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.07, mitigation_note: 'Verify gas lines and water supply before demo', default_included: true },
-  { id: uid(), project_type: 'Kitchen', risk_name: 'Structural wall discovery', default_level: 'Medium', exposure_low_pct: 0.03, exposure_high_pct: 0.08, mitigation_note: 'Investigate wall before layout changes; engineer if needed', default_included: true },
-  { id: uid(), project_type: 'Kitchen', risk_name: 'Cabinet/countertop lead times', default_level: 'Low', exposure_low_pct: 0.01, exposure_high_pct: 0.04, mitigation_note: 'Order early; confirm templates before fabrication', default_included: true },
-  { id: uid(), project_type: 'Kitchen', risk_name: 'Permit/inspection delays', default_level: 'Low', exposure_low_pct: 0.01, exposure_high_pct: 0.03, mitigation_note: 'Submit early; schedule buffers', default_included: true },
-  // Small Job risks
-  { id: uid(), project_type: 'Small Job', risk_name: 'Scope creep / hidden damage', default_level: 'Medium', exposure_low_pct: 0.05, exposure_high_pct: 0.15, mitigation_note: 'Document scope clearly; CO for extras', default_included: true },
-  { id: uid(), project_type: 'Small Job', risk_name: 'Material availability', default_level: 'Low', exposure_low_pct: 0.02, exposure_high_pct: 0.05, mitigation_note: 'Verify materials in stock before scheduling', default_included: true },
+const SEED_RISK_LIBRARY: Omit<RiskLibraryItem, 'id'>[] = [
+  { project_type: 'Bath', risk_name: 'Hidden plumbing/electrical', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.06, mitigation_note: 'Field verify + allowance; CO if discovered', default_included: true },
+  { project_type: 'Bath', risk_name: 'Subfloor damage', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.05, mitigation_note: 'Inspect after demo; repair allowance', default_included: true },
+  { project_type: 'Bath', risk_name: 'Permit/inspection delays', default_level: 'Low', exposure_low_pct: 0.01, exposure_high_pct: 0.03, mitigation_note: 'Submit early; schedule buffers', default_included: true },
+  { project_type: 'Full Rehab', risk_name: 'Structural reframing', default_level: 'High', exposure_low_pct: 0.03, exposure_high_pct: 0.10, mitigation_note: 'Open walls early; engineer if needed; CO protection', default_included: true },
+  { project_type: 'Full Rehab', risk_name: 'MEP unknowns', default_level: 'Medium', exposure_low_pct: 0.03, exposure_high_pct: 0.07, mitigation_note: 'Early rough inspections; upgrade allowances', default_included: true },
+  { project_type: 'Full Rehab', risk_name: 'Material lead times', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.05, mitigation_note: 'Order long-leads early; alternates list', default_included: true },
+  { project_type: 'Full Rehab', risk_name: 'City inspection cycle', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.06, mitigation_note: 'Buffer schedule; staged inspections', default_included: true },
+  { project_type: 'Kitchen', risk_name: 'Hidden plumbing/gas issues', default_level: 'Medium', exposure_low_pct: 0.02, exposure_high_pct: 0.07, mitigation_note: 'Verify gas lines and water supply before demo', default_included: true },
+  { project_type: 'Kitchen', risk_name: 'Structural wall discovery', default_level: 'Medium', exposure_low_pct: 0.03, exposure_high_pct: 0.08, mitigation_note: 'Investigate wall before layout changes; engineer if needed', default_included: true },
+  { project_type: 'Kitchen', risk_name: 'Cabinet/countertop lead times', default_level: 'Low', exposure_low_pct: 0.01, exposure_high_pct: 0.04, mitigation_note: 'Order early; confirm templates before fabrication', default_included: true },
+  { project_type: 'Kitchen', risk_name: 'Permit/inspection delays', default_level: 'Low', exposure_low_pct: 0.01, exposure_high_pct: 0.03, mitigation_note: 'Submit early; schedule buffers', default_included: true },
+  { project_type: 'Small Job', risk_name: 'Scope creep / hidden damage', default_level: 'Medium', exposure_low_pct: 0.05, exposure_high_pct: 0.15, mitigation_note: 'Document scope clearly; CO for extras', default_included: true },
+  { project_type: 'Small Job', risk_name: 'Material availability', default_level: 'Low', exposure_low_pct: 0.02, exposure_high_pct: 0.05, mitigation_note: 'Verify materials in stock before scheduling', default_included: true },
 ];
 
-export function initStore() {
-  // Seed cost library: add missing project types
-  const existingCost = getCostLibrary();
-  const existingTypes = new Set(existingCost.map(i => i.project_type));
-  const newCostItems = SEED_COST_LIBRARY.filter(i => !existingTypes.has(i.project_type));
-  if (newCostItems.length > 0 || existingCost.length === 0) {
-    set(KEYS.COST_LIBRARY, [...existingCost, ...newCostItems]);
-  }
+export async function initStore() {
+  try {
+    const userId = await getUserId();
+    
+    // Seed cost library if empty
+    const { count: costCount } = await supabase.from('cost_library').select('*', { count: 'exact', head: true }).eq('user_id', userId);
+    if (costCount === 0) {
+      const rows = SEED_COST_LIBRARY.map(item => ({ ...item, id: uid(), user_id: userId }));
+      await supabase.from('cost_library').insert(rows);
+    }
 
-  // Seed risk library: add missing project types
-  const existingRisk = getRiskLibrary();
-  const existingRiskTypes = new Set(existingRisk.map(i => i.project_type));
-  const newRiskItems = SEED_RISK_LIBRARY.filter(i => !existingRiskTypes.has(i.project_type));
-  if (newRiskItems.length > 0 || existingRisk.length === 0) {
-    set(KEYS.RISK_LIBRARY, [...existingRisk, ...newRiskItems]);
+    // Seed risk library if empty
+    const { count: riskCount } = await supabase.from('risk_library').select('*', { count: 'exact', head: true }).eq('user_id', userId);
+    if (riskCount === 0) {
+      const rows = SEED_RISK_LIBRARY.map(item => ({ ...item, id: uid(), user_id: userId }));
+      await supabase.from('risk_library').insert(rows);
+    }
+  } catch (e) {
+    console.error('initStore error:', e);
   }
 }
 
-initStore();
+// ─── Row Mappers ───
+function rowToEstimate(r: any): Estimate {
+  return {
+    estimate_id: r.estimate_id,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    created_by: r.created_by,
+    status: r.status,
+    client_name: r.client_name,
+    client_email: r.client_email,
+    client_phone: r.client_phone,
+    project_address: r.project_address,
+    city: r.city,
+    state: r.state,
+    zip: r.zip,
+    project_name: r.project_name,
+    project_type: r.project_type,
+    sqft: Number(r.sqft),
+    fixture_count: Number(r.fixture_count),
+    labor_hours: Number(r.labor_hours),
+    finish_level: r.finish_level,
+    finish_materials_included: r.finish_materials_included,
+    labor_subtotal: Number(r.labor_subtotal),
+    material_subtotal: Number(r.material_subtotal),
+    subtotal: Number(r.subtotal),
+    cost_structure_json: r.cost_structure_json,
+    line_items_json: r.line_items_json,
+    risk_cost_low: Number(r.risk_cost_low),
+    risk_cost_high: Number(r.risk_cost_high),
+    overall_risk_level: r.overall_risk_level,
+    risk_table_json: r.risk_table_json,
+    overhead_pct: Number(r.overhead_pct),
+    profit_pct: Number(r.profit_pct),
+    contingency_pct: Number(r.contingency_pct),
+    total_low: Number(r.total_low),
+    total_high: Number(r.total_high),
+    assumptions_rich: r.assumptions_rich,
+    timeline_rich: r.timeline_rich,
+    ai_scope: r.ai_scope,
+    ai_price_audit_summary: r.ai_price_audit_summary,
+    public_pdf_url: r.public_pdf_url,
+    internal_pdf_url: r.internal_pdf_url,
+    version: r.version,
+    last_revision_summary: r.last_revision_summary,
+  };
+}
+
+function estimateToRow(est: Estimate, userId: string) {
+  return {
+    user_id: userId,
+    estimate_id: est.estimate_id,
+    created_at: est.created_at,
+    updated_at: est.updated_at || new Date().toISOString(),
+    created_by: est.created_by,
+    status: est.status,
+    client_name: est.client_name,
+    client_email: est.client_email,
+    client_phone: est.client_phone,
+    project_address: est.project_address,
+    city: est.city,
+    state: est.state,
+    zip: est.zip,
+    project_name: est.project_name,
+    project_type: est.project_type,
+    sqft: est.sqft,
+    fixture_count: est.fixture_count,
+    labor_hours: est.labor_hours,
+    finish_level: est.finish_level,
+    finish_materials_included: est.finish_materials_included,
+    labor_subtotal: est.labor_subtotal,
+    material_subtotal: est.material_subtotal,
+    subtotal: est.subtotal,
+    cost_structure_json: est.cost_structure_json,
+    line_items_json: est.line_items_json,
+    risk_cost_low: est.risk_cost_low,
+    risk_cost_high: est.risk_cost_high,
+    overall_risk_level: est.overall_risk_level,
+    risk_table_json: est.risk_table_json,
+    overhead_pct: est.overhead_pct,
+    profit_pct: est.profit_pct,
+    contingency_pct: est.contingency_pct,
+    total_low: est.total_low,
+    total_high: est.total_high,
+    assumptions_rich: est.assumptions_rich,
+    timeline_rich: est.timeline_rich,
+    ai_scope: est.ai_scope,
+    ai_price_audit_summary: est.ai_price_audit_summary,
+    public_pdf_url: est.public_pdf_url,
+    internal_pdf_url: est.internal_pdf_url,
+    version: est.version,
+    last_revision_summary: est.last_revision_summary,
+  };
+}
+
+function rowToCostItem(r: any): CostLibraryItem {
+  return {
+    id: r.id, project_type: r.project_type, trade: r.trade, description: r.description,
+    qty_rule: r.qty_rule, default_included: r.default_included,
+    labor_unit_cost: Number(r.labor_unit_cost), material_unit_cost: Number(r.material_unit_cost),
+    unit_label: r.unit_label, notes: r.notes, last_updated: r.last_updated,
+  };
+}
+
+function rowToRiskItem(r: any): RiskLibraryItem {
+  return {
+    id: r.id, project_type: r.project_type, risk_name: r.risk_name,
+    default_level: r.default_level, exposure_low_pct: Number(r.exposure_low_pct),
+    exposure_high_pct: Number(r.exposure_high_pct), mitigation_note: r.mitigation_note,
+    default_included: r.default_included,
+  };
+}
