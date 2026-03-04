@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
+import { FloatingAIWidget } from './FloatingAIWidget';
 
 export function AppLayout() {
   return (
@@ -17,6 +18,7 @@ export function AppLayout() {
           </main>
         </div>
       </div>
+      <FloatingAIWidget />
     </SidebarProvider>
   );
 }

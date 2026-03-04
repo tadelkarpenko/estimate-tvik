@@ -1,4 +1,5 @@
-import type { Estimate, LineItem, CostStructureItem, RiskTableItem } from './types';
+import type { Estimate, CostStructureItem, RiskTableItem } from './types';
+import type { EstimateLineItem } from './types';
 
 const NAVY = '#0B1F3B';
 const GOLD = '#C9A227';
@@ -28,10 +29,28 @@ function baseStyles() {
 
 function formatMoney(n: number) { return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-export function generatePublicPDF(est: Estimate) {
-  const lineItems: LineItem[] = est.line_items_json ? JSON.parse(est.line_items_json) : [];
+/**
+ * Generate the PUBLIC PDF using canonical line items from the DB table.
+ * Renders ALL line items where include_in_public_pdf = true (regardless of source: Manual, AI, CostLibrary).
+ */
+export function generatePublicPDF(est: Estimate, dbLineItems?: EstimateLineItem[]) {
   const costStructure: CostStructureItem[] = est.cost_structure_json ? JSON.parse(est.cost_structure_json) : [];
   const riskTable: RiskTableItem[] = est.risk_table_json ? JSON.parse(est.risk_table_json) : [];
+
+  // Use DB line items (canonical) if provided; fall back to legacy JSON
+  let lineItemsHtml = '';
+  if (dbLineItems && dbLineItems.length > 0) {
+    const publicItems = dbLineItems.filter(li => (li as any).include_in_public_pdf !== false && li.line_total > 0);
+    lineItemsHtml = publicItems.map(li =>
+      `<tr><td>${li.phase}</td><td>${li.description}</td><td>${li.qty}</td><td>${li.unit}</td><td>${formatMoney(li.labor_total)}</td><td>${formatMoney(li.material_total)}</td><td>${formatMoney(li.line_total)}</td></tr>`
+    ).join('');
+  } else {
+    // Legacy fallback
+    const legacyItems = est.line_items_json ? JSON.parse(est.line_items_json) : [];
+    lineItemsHtml = legacyItems.filter((l: any) => l.total > 0).map((l: any) =>
+      `<tr><td>${l.trade}</td><td>${l.description}</td><td>${l.qty}</td><td>${l.unit}</td><td>${formatMoney(l.labor)}</td><td>${formatMoney(l.material)}</td><td>${formatMoney(l.total)}</td></tr>`
+    ).join('');
+  }
 
   const html = `<!DOCTYPE html><html><head><title>Estimate ${est.estimate_id}</title>${baseStyles()}</head><body>
     <div class="header-bar">
@@ -49,8 +68,8 @@ export function generatePublicPDF(est: Estimate) {
     </div>
 
     <h2>2. Line Items</h2>
-    <table><thead><tr><th>Trade</th><th>Description</th><th>Qty</th><th>Unit</th><th>Labor</th><th>Material</th><th>Total</th></tr></thead><tbody>
-    ${lineItems.filter(l => l.total > 0).map(l => `<tr><td>${l.trade}</td><td>${l.description}</td><td>${l.qty}</td><td>${l.unit}</td><td>${formatMoney(l.labor)}</td><td>${formatMoney(l.material)}</td><td>${formatMoney(l.total)}</td></tr>`).join('')}
+    <table><thead><tr><th>Phase</th><th>Description</th><th>Qty</th><th>Unit</th><th>Labor</th><th>Material</th><th>Total</th></tr></thead><tbody>
+    ${lineItemsHtml}
     </tbody></table>
 
     <h2>3. Cost Summary</h2>
@@ -81,7 +100,7 @@ export function generatePublicPDF(est: Estimate) {
 
     <h2>9. Terms & Acceptance</h2>
     <ul>
-      <li>This estimate is valid for 15 calendar days from the date of issue.</li>
+      <li>This estimate is valid for ${(est as any).validity_days || 15} calendar days from the date of issue.</li>
       <li>All work subject to a signed contract and approved scope of work.</li>
       <li>Changes to scope require a written change order prior to execution.</li>
       <li>Payment terms: 50% upon acceptance, progress draws per schedule, final upon completion.</li>
@@ -101,10 +120,22 @@ export function generatePublicPDF(est: Estimate) {
   return 'generated';
 }
 
-export function generateInternalPDF(est: Estimate) {
-  const lineItems: LineItem[] = est.line_items_json ? JSON.parse(est.line_items_json) : [];
+export function generateInternalPDF(est: Estimate, dbLineItems?: EstimateLineItem[]) {
   const costStructure: CostStructureItem[] = est.cost_structure_json ? JSON.parse(est.cost_structure_json) : [];
   const riskTable: RiskTableItem[] = est.risk_table_json ? JSON.parse(est.risk_table_json) : [];
+
+  let lineItemsHtml = '';
+  if (dbLineItems && dbLineItems.length > 0) {
+    const internalItems = dbLineItems.filter(li => (li as any).include_in_internal_pdf !== false);
+    lineItemsHtml = internalItems.map(li =>
+      `<tr><td>${li.phase}</td><td>${li.description}${li.source !== 'CostLibrary' ? ` <em style="color:#888">[${li.source}]</em>` : ''}</td><td>${li.qty}</td><td>${li.unit}</td><td>${formatMoney(li.labor_total)}</td><td>${formatMoney(li.material_total)}</td><td>${formatMoney(li.line_total)}</td></tr>`
+    ).join('');
+  } else {
+    const legacyItems = est.line_items_json ? JSON.parse(est.line_items_json) : [];
+    lineItemsHtml = legacyItems.map((l: any) =>
+      `<tr><td>${l.trade}</td><td>${l.description}</td><td>${l.qty}</td><td>${l.unit}</td><td>${formatMoney(l.labor)}</td><td>${formatMoney(l.material)}</td><td>${formatMoney(l.total)}</td></tr>`
+    ).join('');
+  }
 
   const html = `<!DOCTYPE html><html><head><title>INTERNAL - ${est.estimate_id}</title>${baseStyles()}</head><body>
     <div class="header-bar">
@@ -120,8 +151,8 @@ export function generateInternalPDF(est: Estimate) {
     </div>
 
     <h2>Line Items</h2>
-    <table><thead><tr><th>Trade</th><th>Desc</th><th>Qty</th><th>Unit</th><th>Labor</th><th>Material</th><th>Total</th></tr></thead><tbody>
-    ${lineItems.map(l => `<tr><td>${l.trade}</td><td>${l.description}</td><td>${l.qty}</td><td>${l.unit}</td><td>${formatMoney(l.labor)}</td><td>${formatMoney(l.material)}</td><td>${formatMoney(l.total)}</td></tr>`).join('')}
+    <table><thead><tr><th>Phase</th><th>Desc</th><th>Qty</th><th>Unit</th><th>Labor</th><th>Material</th><th>Total</th></tr></thead><tbody>
+    ${lineItemsHtml}
     </tbody></table>
 
     <h2>Cost Structure</h2>

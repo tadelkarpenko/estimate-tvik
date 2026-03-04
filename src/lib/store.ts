@@ -114,7 +114,10 @@ export const getEstimateLineItems = async (estimateDbId: string): Promise<Estima
     confidence: (r.confidence || 'Medium') as any,
     evidence_source: r.evidence_source || 'CostLibrary',
     notes: r.notes || '',
-  }));
+    include_in_public_pdf: (r as any).include_in_public_pdf !== false,
+    include_in_internal_pdf: (r as any).include_in_internal_pdf !== false,
+    created_by: (r as any).created_by || 'Manual',
+  } as any));
 };
 
 export const upsertEstimateLineItems = async (items: EstimateLineItem[]): Promise<void> => {
@@ -131,6 +134,9 @@ export const upsertEstimateLineItems = async (items: EstimateLineItem[]): Promis
     confidence: li.confidence || 'Medium',
     evidence_source: li.evidence_source || 'CostLibrary',
     notes: li.notes || '',
+    include_in_public_pdf: (li as any).include_in_public_pdf !== false,
+    include_in_internal_pdf: (li as any).include_in_internal_pdf !== false,
+    created_by: (li as any).created_by || 'Manual',
   }));
   const { error } = await supabase.from('estimate_line_items').upsert(rows, { onConflict: 'line_id' });
   if (error) throw error;
