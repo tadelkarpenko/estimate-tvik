@@ -130,6 +130,10 @@ export function runCostEngine(input: CostInput): CostResult {
       line_total: Math.round((labor_total + material_total) * 100) / 100,
       source: 'CostLibrary',
       locked: false,
+      pending_confirmation: false,
+      confidence: 'High',
+      evidence_source: 'CostLibrary',
+      notes: '',
     });
   }
 

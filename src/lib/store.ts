@@ -110,6 +110,10 @@ export const getEstimateLineItems = async (estimateDbId: string): Promise<Estima
     labor_hours_per_unit: Number(r.labor_hours_per_unit), labor_hours_total: Number(r.labor_hours_total),
     labor_total: Number(r.labor_total), material_total: Number(r.material_total),
     line_total: Number(r.line_total), source: r.source as any, locked: r.locked, created_at: r.created_at,
+    pending_confirmation: r.pending_confirmation ?? false,
+    confidence: (r.confidence || 'Medium') as any,
+    evidence_source: r.evidence_source || 'CostLibrary',
+    notes: r.notes || '',
   }));
 };
 
@@ -123,6 +127,10 @@ export const upsertEstimateLineItems = async (items: EstimateLineItem[]): Promis
     labor_hours_per_unit: li.labor_hours_per_unit, labor_hours_total: li.labor_hours_total,
     labor_total: li.labor_total, material_total: li.material_total, line_total: li.line_total,
     source: li.source, locked: li.locked,
+    pending_confirmation: li.pending_confirmation ?? false,
+    confidence: li.confidence || 'Medium',
+    evidence_source: li.evidence_source || 'CostLibrary',
+    notes: li.notes || '',
   }));
   const { error } = await supabase.from('estimate_line_items').upsert(rows, { onConflict: 'line_id' });
   if (error) throw error;
@@ -186,7 +194,9 @@ export const getChatMessages = async (threadDbId: string): Promise<EstimateChatM
   if (error) throw error;
   return (data || []).map(r => ({
     id: r.id, message_id: r.message_id, thread_id: r.thread_id,
-    user_id: r.user_id, role: r.role as any, content: r.content, created_at: r.created_at,
+    user_id: r.user_id, role: r.role as any, content: r.content,
+    suggested_changes_json: r.suggested_changes_json || '',
+    created_at: r.created_at,
   }));
 };
 
@@ -195,6 +205,7 @@ export const saveChatMessage = async (msg: EstimateChatMessage): Promise<void> =
   const { error } = await supabase.from('estimate_chat_messages').insert({
     message_id: msg.message_id, thread_id: msg.thread_id,
     user_id: userId, role: msg.role, content: msg.content,
+    suggested_changes_json: msg.suggested_changes_json || '',
   });
   if (error) throw error;
 };
@@ -356,6 +367,8 @@ function rowToEstimate(r: any): Estimate {
     subtotal_labor_hours: Number(r.subtotal_labor_hours || 0),
     estimated_duration_days: Number(r.estimated_duration_days || 0),
     internal_notes: r.internal_notes || '', public_notes: r.public_notes || '',
+    clarification_answers_json: r.clarification_answers_json || '[]',
+    ai_suggestions_last_json: r.ai_suggestions_last_json || '[]',
   };
 }
 
@@ -383,6 +396,8 @@ function estimateToRow(est: Estimate, userId: string) {
     crew_size: est.crew_size, hours_per_day: est.hours_per_day,
     subtotal_labor_hours: est.subtotal_labor_hours, estimated_duration_days: est.estimated_duration_days,
     internal_notes: est.internal_notes, public_notes: est.public_notes,
+    clarification_answers_json: est.clarification_answers_json || '[]',
+    ai_suggestions_last_json: est.ai_suggestions_last_json || '[]',
   };
 }
 

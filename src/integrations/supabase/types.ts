@@ -111,6 +111,7 @@ export type Database = {
           id: string
           message_id: string
           role: string
+          suggested_changes_json: string
           thread_id: string
           user_id: string
         }
@@ -120,6 +121,7 @@ export type Database = {
           id?: string
           message_id: string
           role?: string
+          suggested_changes_json?: string
           thread_id: string
           user_id: string
         }
@@ -129,6 +131,7 @@ export type Database = {
           id?: string
           message_id?: string
           role?: string
+          suggested_changes_json?: string
           thread_id?: string
           user_id?: string
         }
@@ -197,9 +200,11 @@ export type Database = {
       }
       estimate_line_items: {
         Row: {
+          confidence: string
           created_at: string
           description: string
           estimate_id: string
+          evidence_source: string
           id: string
           labor_hours_per_unit: number
           labor_hours_total: number
@@ -210,6 +215,8 @@ export type Database = {
           locked: boolean
           material_total: number
           material_unit_cost: number
+          notes: string
+          pending_confirmation: boolean
           phase: string
           qty: number
           source: string
@@ -217,9 +224,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          confidence?: string
           created_at?: string
           description?: string
           estimate_id: string
+          evidence_source?: string
           id?: string
           labor_hours_per_unit?: number
           labor_hours_total?: number
@@ -230,6 +239,8 @@ export type Database = {
           locked?: boolean
           material_total?: number
           material_unit_cost?: number
+          notes?: string
+          pending_confirmation?: boolean
           phase?: string
           qty?: number
           source?: string
@@ -237,9 +248,11 @@ export type Database = {
           user_id: string
         }
         Update: {
+          confidence?: string
           created_at?: string
           description?: string
           estimate_id?: string
+          evidence_source?: string
           id?: string
           labor_hours_per_unit?: number
           labor_hours_total?: number
@@ -250,6 +263,8 @@ export type Database = {
           locked?: boolean
           material_total?: number
           material_unit_cost?: number
+          notes?: string
+          pending_confirmation?: boolean
           phase?: string
           qty?: number
           source?: string
@@ -318,6 +333,7 @@ export type Database = {
           id: string
           media_id: string
           observed_conditions: string
+          questions_needed_json: string
           recommended_allowance_range: string
           risk_flags: string
           suggested_scope_impacts: string
@@ -330,6 +346,7 @@ export type Database = {
           id?: string
           media_id: string
           observed_conditions?: string
+          questions_needed_json?: string
           recommended_allowance_range?: string
           risk_flags?: string
           suggested_scope_impacts?: string
@@ -342,6 +359,7 @@ export type Database = {
           id?: string
           media_id?: string
           observed_conditions?: string
+          questions_needed_json?: string
           recommended_allowance_range?: string
           risk_flags?: string
           suggested_scope_impacts?: string
@@ -361,8 +379,10 @@ export type Database = {
         Row: {
           ai_price_audit_summary: string
           ai_scope: string
+          ai_suggestions_last_json: string
           assumptions_rich: string
           city: string
+          clarification_answers_json: string
           client_email: string
           client_name: string
           client_phone: string
@@ -412,8 +432,10 @@ export type Database = {
         Insert: {
           ai_price_audit_summary?: string
           ai_scope?: string
+          ai_suggestions_last_json?: string
           assumptions_rich?: string
           city?: string
+          clarification_answers_json?: string
           client_email?: string
           client_name?: string
           client_phone?: string
@@ -463,8 +485,10 @@ export type Database = {
         Update: {
           ai_price_audit_summary?: string
           ai_scope?: string
+          ai_suggestions_last_json?: string
           assumptions_rich?: string
           city?: string
+          clarification_answers_json?: string
           client_email?: string
           client_name?: string
           client_phone?: string
