@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, Minus, X, Send, Maximize2 } from 'lucide-react';
+import { Minus, X, Send, Maximize2 } from 'lucide-react';
+import mascotImg from '@/assets/mascot_taz_spin.png';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
@@ -19,19 +19,12 @@ export function FloatingAIWidget() {
   const endRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
-  // Determine context from route
   const estimateMatch = location.pathname.match(/\/estimates\/(.+)/);
   const contractMatch = location.pathname.match(/\/contracts\/(.+)/);
   const contextLabel = estimateMatch ? `Estimate: ${estimateMatch[1]}` : contractMatch ? `Contract: ${contractMatch[1]}` : 'General';
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Reset messages when context changes
-  useEffect(() => {
-    setMessages([]);
-  }, [location.pathname]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { setMessages([]); }, [location.pathname]);
 
   const sendMessage = useCallback(async () => {
     if (!input.trim() || streaming) return;
@@ -93,7 +86,7 @@ export function FloatingAIWidget() {
           } catch { /* partial */ }
         }
       }
-    } catch (e) {
+    } catch {
       assistantContent = 'Sorry, I encountered an error. Please try again.';
       setMessages(prev => {
         const copy = [...prev];
@@ -109,10 +102,10 @@ export function FloatingAIWidget() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all flex items-center justify-center hover:scale-105"
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center hover:scale-105 overflow-hidden border-2 border-primary/30 bg-card"
         aria-label="Open AI Assistant"
       >
-        <Bot className="h-6 w-6" />
+        <img src={mascotImg} alt="AI Assistant" className="w-full h-full object-cover" />
       </button>
     );
   }
@@ -120,7 +113,7 @@ export function FloatingAIWidget() {
   if (minimized) {
     return (
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-card border rounded-full shadow-lg px-4 py-2">
-        <Bot className="h-4 w-4 text-primary" />
+        <img src={mascotImg} alt="AI" className="w-5 h-5 rounded-full object-cover" />
         <span className="text-xs font-medium">AI Assistant</span>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setMinimized(false)}>
           <Maximize2 className="h-3 w-3" />
@@ -133,19 +126,19 @@ export function FloatingAIWidget() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[360px] h-[480px] bg-card border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed bottom-6 right-6 z-50 w-[380px] h-[500px] bg-card border rounded-xl shadow-2xl flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-primary/5">
         <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold">AI Assistant</span>
+          <img src={mascotImg} alt="AI" className="w-6 h-6 rounded-full object-cover" />
+          <span className="text-sm font-semibold">TVIK AI</span>
           <Badge variant="outline" className="text-xs">{contextLabel}</Badge>
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setMinimized(true)}>
             <Minus className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setOpen(false); }}>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setOpen(false)}>
             <X className="h-3 w-3" />
           </Button>
         </div>
@@ -163,9 +156,7 @@ export function FloatingAIWidget() {
             <div
               key={i}
               className={`p-2.5 rounded-lg text-sm ${
-                m.role === 'user'
-                  ? 'bg-primary/10 ml-6'
-                  : 'bg-muted mr-4'
+                m.role === 'user' ? 'bg-primary/10 ml-6' : 'bg-muted mr-4'
               }`}
             >
               <div className="prose prose-sm max-w-none text-foreground">

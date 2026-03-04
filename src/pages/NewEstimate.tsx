@@ -62,9 +62,28 @@ const FINISH_MULTS: Record<FinishLevel, number> = { Basic: 1.00, Mid: 1.15, High
 function parseSuggestedChanges(text: string): SuggestedChanges | null {
   try {
     const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) return JSON.parse(jsonMatch[1]);
-    // Try parsing the whole thing
-    const parsed = JSON.parse(text);
+    const raw = jsonMatch ? jsonMatch[1] : text;
+    const parsed = JSON.parse(raw);
+    
+    // Normalize: support both { SuggestedChanges: [...] } and { actions: [...] } formats
+    if (parsed.SuggestedChanges) {
+      return {
+        actions: parsed.SuggestedChanges.map((s: any) => ({
+          type: s.type || 'ADD_LINE_ITEM',
+          trade: s.phase || s.trade || 'Other',
+          description: s.description || '',
+          unit: s.unit || 'ea',
+          qty: s.qty || 1,
+          labor_unit_cost: s.labor_unit_cost ?? null,
+          material_unit_cost: s.material_unit_cost ?? null,
+          confidence: s.confidence || 'Medium',
+          evidence_source: s.evidence_source || 'Chat',
+          rationale: s.notes || s.rationale || '',
+          requires_confirmation: true,
+          pending_confirmation: true,
+        })),
+      };
+    }
     if (parsed.actions) return parsed;
     return null;
   } catch { return null; }
@@ -1084,7 +1103,7 @@ export default function NewEstimate() {
                       <Select value={manualItem.phase} onValueChange={v => setManualItem(p => ({ ...p, phase: v as Phase }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {['Demo','Protection','Framing','Drywall','Paint','Flooring','Electrical','Plumbing','HVAC','Kitchen','Bath','Exterior','Roofing','Permits','Cleaning','Other'].map(p => (
+                          {['Demo','Framing','Drywall','Paint','Flooring','Electrical','Plumbing','HVAC','Kitchen','Bathroom','Permits/Fees','Cleanup/Trash','Other'].map(p => (
                             <SelectItem key={p} value={p}>{p}</SelectItem>
                           ))}
                         </SelectContent>
