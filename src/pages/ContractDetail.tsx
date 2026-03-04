@@ -11,8 +11,11 @@ import {
 import { getEstimateLineItems } from '@/lib/store';
 import { recomputeContractWIP, computeCashForecast, computeTradeDrift, driftEntriesToFactors, type TradeDriftEntry } from '@/lib/contractEngine';
 import { computeSubcontractExposure } from '@/lib/phase5Engine';
-import { getSubcontracts, saveSubcontract, getSubcontractInvoices, getSchedulePhases } from '@/lib/phase5Store';
-import type { Subcontract, SchedulePhase } from '@/lib/phase5Types';
+import {
+  getSubcontracts, saveSubcontract, getSubcontractInvoices, getSchedulePhases,
+  queueExecutionEvent, getLatestAdvisories, triggerIntelligenceProcessing,
+} from '@/lib/phase5Store';
+import type { Subcontract, SchedulePhase, ExecutionEvent } from '@/lib/phase5Types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText, Brain, Zap } from 'lucide-react';
 import { generateContractPDF } from '@/lib/pdfGenerator';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,7 +41,9 @@ export default function ContractDetail() {
   const [driftEntries, setDriftEntries] = useState<TradeDriftEntry[]>([]);
   const [subcontracts, setSubcontracts] = useState<Subcontract[]>([]);
   const [schedulePhases, setSchedulePhases] = useState<SchedulePhase[]>([]);
+  const [advisories, setAdvisories] = useState<ExecutionEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingAI, setProcessingAI] = useState(false);
   const [coModal, setCoModal] = useState(false);
   const [coForm, setCoForm] = useState({ description: '', change_type: 'Scope Correction' as ChangeOrderType, delta_value: 0 });
   const [subModal, setSubModal] = useState(false);
@@ -53,13 +58,14 @@ export default function ContractDetail() {
       const c = await getContract(id);
       if (!c) { navigate('/contracts'); return; }
       setContract(c);
-      const [items, cos, log, completedItems, subs, phases] = await Promise.all([
+      const [items, cos, log, completedItems, subs, phases, advs] = await Promise.all([
         getEstimateLineItems(c.estimate_id),
         getChangeOrders(c.id!),
         getAuditLog(c.id!),
         getCompletedLineItemsForDrift(),
         getSubcontracts(c.id!),
         getSchedulePhases(c.id!),
+        getLatestAdvisories(c.id!),
       ]);
       setLineItems(items);
       setChangeOrders(cos);
@@ -67,6 +73,7 @@ export default function ContractDetail() {
       setDriftEntries(computeTradeDrift(completedItems));
       setSubcontracts(subs);
       setSchedulePhases(phases);
+      setAdvisories(advs);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [id, navigate]);
@@ -103,9 +110,10 @@ export default function ContractDetail() {
   // WIP recompute
   const recompute = async () => {
     if (!contract) return;
+    const prevPct = contract.percent_complete;
+    const prevFade = contract.profit_fade_flag;
     const tradeDriftFactors = driftEntriesToFactors(driftEntries);
     const updates = recomputeContractWIP(contract, lineItems, tradeDriftFactors);
-    // Cash forecast
     let milestones: PaymentMilestone[] = [];
     try { milestones = JSON.parse(contract.payment_schedule_json); } catch {}
     const forecast = computeCashForecast(milestones, contract.net_contract_value, updates.percent_complete || 0);
@@ -117,7 +125,22 @@ export default function ContractDetail() {
       new_value: `${updates.percent_complete}% / ${fmt(updates.projected_final_cost || 0)}`,
       reason: 'Manual recompute',
     });
-    toast({ title: 'WIP recomputed' });
+    // Queue async execution event
+    await queueExecutionEvent({
+      contract_id: contract.id!,
+      event_type: 'wip_recompute',
+      payload_json: JSON.stringify({
+        event_type: 'wip_recompute',
+        percent_complete_before: prevPct,
+        margin_before: contract.margin_current_pct,
+        profit_fade_before: prevFade,
+      }),
+      status: 'Queued',
+      result_json: '{}',
+    });
+    // Fire async intelligence processing (non-blocking)
+    triggerIntelligenceProcessing();
+    toast({ title: 'WIP recomputed', description: 'AI advisory queued.' });
     await load();
   };
 
@@ -146,7 +169,6 @@ export default function ContractDetail() {
     if (!contract) return;
     const doApprove = async () => {
       await approveChangeOrder(co.id!);
-      // Recompute net_contract_value
       const allCOs = await getChangeOrders(contract.id!);
       const approvedSum = allCOs.filter(c => c.approved || c.id === co.id).reduce((s, c) => s + c.delta_value, 0);
       const newNet = Math.round((contract.baseline_contract_value + approvedSum) * 100) / 100;
@@ -156,6 +178,20 @@ export default function ContractDetail() {
         old_value: fmt(contract.net_contract_value), new_value: fmt(newNet),
         reason: `Approved ${co.change_order_id}: ${co.description}`,
       });
+      // Queue event for AI analysis
+      await queueExecutionEvent({
+        contract_id: contract.id!,
+        event_type: 'change_order_approved',
+        payload_json: JSON.stringify({
+          event_type: 'change_order_approved',
+          margin_before: contract.margin_current_pct,
+          profit_fade_before: contract.profit_fade_flag,
+          co_delta: co.delta_value,
+        }),
+        status: 'Queued',
+        result_json: '{}',
+      });
+      triggerIntelligenceProcessing();
       toast({ title: 'Change order approved', description: `Net value: ${fmt(newNet)}` });
       await load();
     };
@@ -227,17 +263,67 @@ export default function ContractDetail() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         <MiniCard label="Baseline" value={fmt(contract.baseline_contract_value)} />
         <MiniCard label="Net Value" value={fmt(contract.net_contract_value)} />
         <MiniCard label="% Complete" value={`${contract.percent_complete.toFixed(1)}%`} />
         <MiniCard label="Earned Rev" value={fmt(contract.earned_revenue)} />
         <MiniCard label="Proj. Profit" value={fmt(contract.projected_final_profit)} />
         <MiniCard label="Margin" value={pct(contract.margin_current_pct)} />
+        <MiniCard label="Quadrant" value={(contract as any).risk_quadrant || 'Stable'} />
       </div>
+
+      {/* Latest Advisory Banner */}
+      {advisories.length > 0 && (() => {
+        try {
+          const latest = JSON.parse(advisories[0].result_json);
+          if (latest.advisory_text) return (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="pt-3 pb-2 px-4">
+                <div className="flex items-start gap-2">
+                  <Brain className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-semibold text-primary">AI Advisory</span>
+                      {latest.impact_level && <Badge variant="outline" className="text-xs">{latest.impact_level}</Badge>}
+                      {latest.confidence && <Badge variant="secondary" className="text-xs">{latest.confidence}</Badge>}
+                    </div>
+                    <p className="text-sm text-foreground whitespace-pre-line">{latest.advisory_text}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Generated {new Date(advisories[0].processed_at!).toLocaleString()}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        } catch {}
+        return null;
+      })()}
 
       <div className="flex gap-2">
         <Button size="sm" onClick={recompute}>Recompute WIP</Button>
+        <Button size="sm" variant="outline" onClick={async () => {
+          setProcessingAI(true);
+          try {
+            await queueExecutionEvent({
+              contract_id: contract.id!,
+              event_type: 'manual_analysis',
+              payload_json: JSON.stringify({
+                event_type: 'manual_analysis',
+                margin_before: contract.margin_current_pct,
+                profit_fade_before: contract.profit_fade_flag,
+                percent_complete_before: contract.percent_complete,
+              }),
+              status: 'Queued', result_json: '{}',
+            });
+            await triggerIntelligenceProcessing();
+            toast({ title: 'AI analysis queued', description: 'Advisory will appear shortly.' });
+            // Reload after a short delay to pick up results
+            setTimeout(() => load(), 5000);
+          } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+          finally { setProcessingAI(false); }
+        }} disabled={processingAI}>
+          <Brain className="h-3 w-3 mr-1" />{processingAI ? 'Processing…' : 'Run AI Analysis'}
+        </Button>
         <Button size="sm" variant="outline" onClick={() => setCoModal(true)}><Plus className="h-3 w-3 mr-1" />Create Change Order</Button>
         <Button size="sm" variant="outline" onClick={() => generateContractPDF(contract, changeOrders)}>
           <FileText className="h-3 w-3 mr-1" />Export Financial PDF
@@ -252,6 +338,10 @@ export default function ContractDetail() {
           <TabsTrigger value="cash">Cash Forecast</TabsTrigger>
           <TabsTrigger value="drift">Trade Drift{driftEntries.some(d => d.alert) ? ' ⚠' : ''}</TabsTrigger>
           <TabsTrigger value="margin">Margin & Risk</TabsTrigger>
+          <TabsTrigger value="advisories">
+            AI Advisories{advisories.length > 0 ? ` (${advisories.length})` : ''}
+            {advisories.length > 0 && <Zap className="h-3 w-3 ml-1 text-primary" />}
+          </TabsTrigger>
           <TabsTrigger value="audit">Audit Log</TabsTrigger>
         </TabsList>
 
@@ -544,6 +634,70 @@ export default function ContractDetail() {
               <p>Projected Final Cost: <strong>{fmt(contract.projected_final_cost)}</strong></p>
               <p>Projected Profit: <strong>{fmt(contract.projected_final_profit)}</strong></p>
               <p>Current Margin: <strong>{pct(contract.margin_current_pct)}</strong></p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* AI Advisories Tab */}
+        <TabsContent value="advisories" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Brain className="h-4 w-4" />Execution Intelligence Advisories
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <MiniCard label="Risk Score" value={String((contract as any).margin_risk_score || 0)} />
+                <MiniCard label="Opportunity Score" value={String((contract as any).margin_opportunity_score || 0)} />
+                <MiniCard label="Exec Priority" value={String((contract as any).execution_priority_score || 0)} />
+                <MiniCard label="Quadrant" value={(contract as any).risk_quadrant || 'Stable'} />
+              </div>
+
+              {advisories.length > 0 ? (
+                <div className="space-y-3">
+                  {advisories.map((adv, i) => {
+                    let result: any = {};
+                    try { result = JSON.parse(adv.result_json); } catch {}
+                    return (
+                      <Card key={adv.id || i} className="border-muted">
+                        <CardContent className="pt-3 pb-2 px-4">
+                          <div className="flex items-start gap-2">
+                            <Zap className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant="outline" className="text-xs">{adv.event_type}</Badge>
+                                {result.impact_level && <Badge variant={result.impact_level === 'Critical' ? 'destructive' : 'secondary'} className="text-xs">{result.impact_level}</Badge>}
+                                {result.confidence && <span className="text-xs text-muted-foreground">Confidence: {result.confidence}</span>}
+                              </div>
+                              <p className="text-sm whitespace-pre-line">{result.advisory_text || 'No advisory text'}</p>
+                              {result.margin_risk_score !== undefined && (
+                                <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                                  <span>Risk: {result.margin_risk_score}</span>
+                                  <span>Opportunity: {result.margin_opportunity_score}</span>
+                                  <span>Priority: {result.execution_priority_score}</span>
+                                </div>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {adv.processed_at ? new Date(adv.processed_at).toLocaleString() : 'Processing…'}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-center py-6 text-muted-foreground">No advisories yet. Click "Run AI Analysis" or recompute WIP to generate advisories.</p>
+              )}
+
+              <div className="mt-3 p-3 bg-muted/50 rounded-md text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">Debounce Rules:</p>
+                <p>• Max 1 advisory per contract per 10 minutes</p>
+                <p>• Max 5 advisories per contract per 24 hours</p>
+                <p>• AI is advisory only — no financial modifications</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

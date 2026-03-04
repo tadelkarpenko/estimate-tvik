@@ -112,6 +112,43 @@ export const getExecutionEvents = async (contractId: string): Promise<ExecutionE
   return data || [];
 };
 
+export const getQueuedEventCount = async (): Promise<number> => {
+  const { count, error } = await supabase.from('execution_events').select('*', { count: 'exact', head: true }).eq('status', 'Queued');
+  if (error) throw error;
+  return count || 0;
+};
+
+export const getLatestAdvisories = async (contractId: string): Promise<ExecutionEvent[]> => {
+  const { data, error } = await supabase
+    .from('execution_events')
+    .select('*')
+    .eq('contract_id', contractId)
+    .eq('status', 'Completed')
+    .order('processed_at', { ascending: false })
+    .limit(10);
+  if (error) throw error;
+  return (data || []).filter(e => {
+    try {
+      const r = JSON.parse(e.result_json);
+      return !r.debounced && !r.no_transition && !r.daily_limit_reached;
+    } catch { return false; }
+  });
+};
+
+/**
+ * Trigger async AI processing by calling the execution-intelligence edge function.
+ * Non-blocking: fires and forgets.
+ */
+export const triggerIntelligenceProcessing = async (): Promise<void> => {
+  try {
+    await supabase.functions.invoke('execution-intelligence', {
+      body: { action: 'process_queue' },
+    });
+  } catch (e) {
+    console.warn('Intelligence processing trigger failed (non-blocking):', e);
+  }
+};
+
 // ─── PM Scorecard ───
 
 export const savePMScorecard = async (snapshot: PMScorecardSnapshot): Promise<void> => {
