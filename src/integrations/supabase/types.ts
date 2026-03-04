@@ -46,14 +46,18 @@ export type Database = {
       }
       cost_library: {
         Row: {
+          active: boolean
           created_at: string
+          crew_trade: string
           default_included: boolean
           description: string
           id: string
+          labor_hours_per_unit: number
           labor_unit_cost: number
           last_updated: string
           material_unit_cost: number
           notes: string
+          productivity_note: string
           project_type: string
           qty_rule: string
           trade: string
@@ -61,14 +65,18 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          active?: boolean
           created_at?: string
+          crew_trade?: string
           default_included?: boolean
           description?: string
           id?: string
+          labor_hours_per_unit?: number
           labor_unit_cost?: number
           last_updated?: string
           material_unit_cost?: number
           notes?: string
+          productivity_note?: string
           project_type: string
           qty_rule?: string
           trade: string
@@ -76,14 +84,18 @@ export type Database = {
           user_id: string
         }
         Update: {
+          active?: boolean
           created_at?: string
+          crew_trade?: string
           default_included?: boolean
           description?: string
           id?: string
+          labor_hours_per_unit?: number
           labor_unit_cost?: number
           last_updated?: string
           material_unit_cost?: number
           notes?: string
+          productivity_note?: string
           project_type?: string
           qty_rule?: string
           trade?: string
@@ -91,6 +103,79 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      estimate_chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          message_id: string
+          role: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_id: string
+          role?: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_id?: string
+          role?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_chat_threads: {
+        Row: {
+          created_at: string
+          estimate_id: string
+          id: string
+          thread_id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          estimate_id: string
+          id?: string
+          thread_id: string
+          title?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          estimate_id?: string
+          id?: string
+          thread_id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_chat_threads_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       estimate_counter: {
         Row: {
@@ -110,6 +195,168 @@ export type Database = {
         }
         Relationships: []
       }
+      estimate_line_items: {
+        Row: {
+          created_at: string
+          description: string
+          estimate_id: string
+          id: string
+          labor_hours_per_unit: number
+          labor_hours_total: number
+          labor_total: number
+          labor_unit_cost: number
+          line_id: string
+          line_total: number
+          locked: boolean
+          material_total: number
+          material_unit_cost: number
+          phase: string
+          qty: number
+          source: string
+          unit: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          estimate_id: string
+          id?: string
+          labor_hours_per_unit?: number
+          labor_hours_total?: number
+          labor_total?: number
+          labor_unit_cost?: number
+          line_id: string
+          line_total?: number
+          locked?: boolean
+          material_total?: number
+          material_unit_cost?: number
+          phase?: string
+          qty?: number
+          source?: string
+          unit?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          estimate_id?: string
+          id?: string
+          labor_hours_per_unit?: number
+          labor_hours_total?: number
+          labor_total?: number
+          labor_unit_cost?: number
+          line_id?: string
+          line_total?: number
+          locked?: boolean
+          material_total?: number
+          material_unit_cost?: number
+          phase?: string
+          qty?: number
+          source?: string
+          unit?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_line_items_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_media: {
+        Row: {
+          caption: string
+          created_at: string
+          estimate_id: string
+          file_url: string
+          id: string
+          include_in_internal_pdf: boolean
+          include_in_public_pdf: boolean
+          media_id: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string
+          created_at?: string
+          estimate_id: string
+          file_url?: string
+          id?: string
+          include_in_internal_pdf?: boolean
+          include_in_public_pdf?: boolean
+          media_id: string
+          user_id: string
+        }
+        Update: {
+          caption?: string
+          created_at?: string
+          estimate_id?: string
+          file_url?: string
+          id?: string
+          include_in_internal_pdf?: boolean
+          include_in_public_pdf?: boolean
+          media_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_media_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_media_analysis: {
+        Row: {
+          ai_confidence: string
+          analysis_id: string
+          created_at: string
+          id: string
+          media_id: string
+          observed_conditions: string
+          recommended_allowance_range: string
+          risk_flags: string
+          suggested_scope_impacts: string
+          user_id: string
+        }
+        Insert: {
+          ai_confidence?: string
+          analysis_id: string
+          created_at?: string
+          id?: string
+          media_id: string
+          observed_conditions?: string
+          recommended_allowance_range?: string
+          risk_flags?: string
+          suggested_scope_impacts?: string
+          user_id: string
+        }
+        Update: {
+          ai_confidence?: string
+          analysis_id?: string
+          created_at?: string
+          id?: string
+          media_id?: string
+          observed_conditions?: string
+          recommended_allowance_range?: string
+          risk_flags?: string
+          suggested_scope_impacts?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_media_analysis_media_id_fkey"
+            columns: ["media_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_media"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimates: {
         Row: {
           ai_price_audit_summary: string
@@ -123,11 +370,15 @@ export type Database = {
           cost_structure_json: string
           created_at: string
           created_by: string
+          crew_size: number
           estimate_id: string
+          estimated_duration_days: number
           finish_level: string
           finish_materials_included: boolean
           fixture_count: number
+          hours_per_day: number
           id: string
+          internal_notes: string
           internal_pdf_url: string
           labor_hours: number
           labor_subtotal: number
@@ -140,6 +391,7 @@ export type Database = {
           project_address: string
           project_name: string
           project_type: string
+          public_notes: string
           public_pdf_url: string
           risk_cost_high: number
           risk_cost_low: number
@@ -148,6 +400,7 @@ export type Database = {
           state: string
           status: string
           subtotal: number
+          subtotal_labor_hours: number
           timeline_rich: string
           total_high: number
           total_low: number
@@ -168,11 +421,15 @@ export type Database = {
           cost_structure_json?: string
           created_at?: string
           created_by?: string
+          crew_size?: number
           estimate_id: string
+          estimated_duration_days?: number
           finish_level?: string
           finish_materials_included?: boolean
           fixture_count?: number
+          hours_per_day?: number
           id?: string
+          internal_notes?: string
           internal_pdf_url?: string
           labor_hours?: number
           labor_subtotal?: number
@@ -185,6 +442,7 @@ export type Database = {
           project_address?: string
           project_name?: string
           project_type?: string
+          public_notes?: string
           public_pdf_url?: string
           risk_cost_high?: number
           risk_cost_low?: number
@@ -193,6 +451,7 @@ export type Database = {
           state?: string
           status?: string
           subtotal?: number
+          subtotal_labor_hours?: number
           timeline_rich?: string
           total_high?: number
           total_low?: number
@@ -213,11 +472,15 @@ export type Database = {
           cost_structure_json?: string
           created_at?: string
           created_by?: string
+          crew_size?: number
           estimate_id?: string
+          estimated_duration_days?: number
           finish_level?: string
           finish_materials_included?: boolean
           fixture_count?: number
+          hours_per_day?: number
           id?: string
+          internal_notes?: string
           internal_pdf_url?: string
           labor_hours?: number
           labor_subtotal?: number
@@ -230,6 +493,7 @@ export type Database = {
           project_address?: string
           project_name?: string
           project_type?: string
+          public_notes?: string
           public_pdf_url?: string
           risk_cost_high?: number
           risk_cost_low?: number
@@ -238,6 +502,7 @@ export type Database = {
           state?: string
           status?: string
           subtotal?: number
+          subtotal_labor_hours?: number
           timeline_rich?: string
           total_high?: number
           total_low?: number
