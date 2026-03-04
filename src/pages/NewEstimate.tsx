@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import type {
   Estimate, EstimateStatus, ProjectType, FinishLevel, EstimateLineItem,
   EstimateMedia, EstimateChatThread, EstimateChatMessage, EstimateMediaAnalysis,
-  SuggestedChanges, SuggestedAction, AIConfidence,
+  SuggestedChanges, SuggestedAction, AIConfidence, Phase, LineItemUnit,
 } from '@/lib/types';
 import {
   getEstimate, saveEstimate, nextEstimateId, uid, getCostLibrary, getRiskLibrary,
@@ -92,6 +92,11 @@ export default function NewEstimate() {
   const [convertingMedia, setConvertingMedia] = useState<string | null>(null);
   const [pendingSuggestions, setPendingSuggestions] = useState<SuggestedChanges | null>(null);
   const [applyingChanges, setApplyingChanges] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualItem, setManualItem] = useState({
+    phase: 'Other' as Phase, description: '', unit: 'ea' as LineItemUnit,
+    qty: 0, labor_unit_cost: 0, material_unit_cost: 0, labor_hours_per_unit: 0, notes: '',
+  });
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isEdit = !!id;
 
@@ -581,6 +586,35 @@ export default function NewEstimate() {
     toast({ title: `${selectedRows.size} rows confirmed` });
   };
 
+  const addManualLineItem = async () => {
+    if (!estimateDbId || !manualItem.description.trim()) {
+      toast({ title: 'Description required', variant: 'destructive' }); return;
+    }
+    const qty = manualItem.qty || 0;
+    const labor_total = Math.round(qty * manualItem.labor_unit_cost * 100) / 100;
+    const material_total = Math.round(qty * manualItem.material_unit_cost * 100) / 100;
+    const labor_hours_total = Math.round(qty * manualItem.labor_hours_per_unit * 100) / 100;
+    const newItem: EstimateLineItem = {
+      line_id: `MAN-${uid()}`, estimate_id: estimateDbId,
+      phase: manualItem.phase, description: manualItem.description,
+      unit: manualItem.unit, qty,
+      labor_unit_cost: manualItem.labor_unit_cost,
+      material_unit_cost: manualItem.material_unit_cost,
+      labor_hours_per_unit: manualItem.labor_hours_per_unit,
+      labor_hours_total, labor_total, material_total,
+      line_total: Math.round((labor_total + material_total) * 100) / 100,
+      source: 'Manual', locked: false, pending_confirmation: false,
+      confidence: 'High', evidence_source: 'Manual', notes: manualItem.notes,
+    };
+    await upsertEstimateLineItems([newItem]);
+    const allItems = await getEstimateLineItems(estimateDbId);
+    setDbLineItems(allItems);
+    await recomputeFromLineItems(allItems);
+    setManualItem({ phase: 'Other', description: '', unit: 'ea', qty: 0, labor_unit_cost: 0, material_unit_cost: 0, labor_hours_per_unit: 0, notes: '' });
+    setShowManualForm(false);
+    toast({ title: 'Manual line item added' });
+  };
+
   const costStructure = form.cost_structure_json ? JSON.parse(form.cost_structure_json) : [];
   const riskTable = form.risk_table_json ? JSON.parse(form.risk_table_json) : [];
   const fmt = (n?: number) => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -857,7 +891,57 @@ export default function NewEstimate() {
               </CardContent>
             </Card>
 
-            {/* How Totals Were Computed */}
+            {/* Manual Line Item Form */}
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setShowManualForm(!showManualForm)}>
+                <Plus className="h-3 w-3 mr-1" />{showManualForm ? 'Cancel' : 'Add Manual Line Item'}
+              </Button>
+            </div>
+            {showManualForm && (
+              <Card>
+                <CardContent className="pt-4 space-y-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <Label>Phase</Label>
+                      <Select value={manualItem.phase} onValueChange={v => setManualItem(p => ({ ...p, phase: v as Phase }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {['Demo','Protection','Framing','Drywall','Paint','Flooring','Electrical','Plumbing','HVAC','Kitchen','Bath','Exterior','Roofing','Permits','Cleaning','Other'].map(p => (
+                            <SelectItem key={p} value={p}>{p}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="lg:col-span-2">
+                      <Label>Description *</Label>
+                      <Input value={manualItem.description} onChange={e => setManualItem(p => ({ ...p, description: e.target.value }))} placeholder="e.g. Custom cabinetry install" />
+                    </div>
+                    <div>
+                      <Label>Unit</Label>
+                      <Select value={manualItem.unit} onValueChange={v => setManualItem(p => ({ ...p, unit: v as LineItemUnit }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {['ea','sf','lf','fixture','hr','day','lump_sum'].map(u => (
+                            <SelectItem key={u} value={u}>{u}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div><Label>Qty</Label><Input type="number" value={manualItem.qty || ''} onChange={e => setManualItem(p => ({ ...p, qty: Number(e.target.value) }))} /></div>
+                    <div><Label>Labor $/unit</Label><Input type="number" step="0.01" value={manualItem.labor_unit_cost || ''} onChange={e => setManualItem(p => ({ ...p, labor_unit_cost: Number(e.target.value) }))} /></div>
+                    <div><Label>Material $/unit</Label><Input type="number" step="0.01" value={manualItem.material_unit_cost || ''} onChange={e => setManualItem(p => ({ ...p, material_unit_cost: Number(e.target.value) }))} /></div>
+                    <div><Label>Labor hrs/unit</Label><Input type="number" step="0.01" value={manualItem.labor_hours_per_unit || ''} onChange={e => setManualItem(p => ({ ...p, labor_hours_per_unit: Number(e.target.value) }))} /></div>
+                    <div><Label>Notes</Label><Input value={manualItem.notes} onChange={e => setManualItem(p => ({ ...p, notes: e.target.value }))} placeholder="Optional" /></div>
+                  </div>
+                  <Button size="sm" onClick={addManualLineItem} disabled={!manualItem.description.trim()}>
+                    <Plus className="h-3 w-3 mr-1" />Add Line Item
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             <Collapsible open={traceOpen} onOpenChange={setTraceOpen}>
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" size="sm"><ChevronDown className={`mr-1 h-4 w-4 transition-transform ${traceOpen ? 'rotate-180' : ''}`} />How totals were computed</Button>
