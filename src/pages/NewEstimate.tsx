@@ -36,7 +36,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock } from 'lucide-react';
+import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock, Target } from 'lucide-react';
+import { MediaUploader } from '@/components/MediaUploader';
+import { fitEstimateToBudget, type BudgetFitScenario } from '@/lib/budgetFitEngine';
 import { useToast } from '@/hooks/use-toast';
 import type { EstimateRevisionLog } from '@/lib/types';
 import { computeCompletenessScore, evaluateApprovalGate, computeCalcStatus, type CompletenessChecklist, type ApprovalGateResult } from '@/lib/reliabilityEngine';
@@ -119,6 +121,8 @@ export default function NewEstimate() {
   const [pendingSuggestions, setPendingSuggestions] = useState<SuggestedChanges | null>(null);
   const [applyingChanges, setApplyingChanges] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
+  const [budgetTarget, setBudgetTarget] = useState<number | ''>('');
+  const [budgetScenarios, setBudgetScenarios] = useState<BudgetFitScenario[] | null>(null);
   const [manualItem, setManualItem] = useState({
     phase: 'Other' as Phase, description: '', unit: 'ea' as LineItemUnit,
     qty: 0, labor_unit_cost: 0, material_unit_cost: 0, labor_hours_per_unit: 0, notes: '',
@@ -905,6 +909,69 @@ export default function NewEstimate() {
                 </div>
               )}
             </div>
+
+            {/* Budget-Fit Controls */}
+            <div className="flex items-end gap-2 p-3 bg-muted/50 rounded-lg">
+              <div>
+                <Label className="text-xs flex items-center gap-1"><Target className="h-3 w-3" />Budget Target ($)</Label>
+                <Input type="number" className="w-32 h-8 text-sm" value={budgetTarget} placeholder="e.g. 3500"
+                  onChange={e => setBudgetTarget(e.target.value ? Number(e.target.value) : '')} />
+              </div>
+              <Button size="sm" variant="outline" disabled={!budgetTarget || dbLineItems.length === 0}
+                onClick={() => {
+                  if (!budgetTarget) return;
+                  const scenarios = fitEstimateToBudget(
+                    dbLineItems, form.subtotal || 0, budgetTarget,
+                    form.overhead_pct || 0.1, form.profit_pct || 0.2, form.contingency_pct || 0.1,
+                  );
+                  setBudgetScenarios(scenarios);
+                }}>
+                <Target className="h-3 w-3 mr-1" />Fit to Budget
+              </Button>
+              {budgetScenarios && <Button size="sm" variant="ghost" onClick={() => setBudgetScenarios(null)}>Dismiss</Button>}
+            </div>
+
+            {/* Budget Scenarios */}
+            {budgetScenarios && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {budgetScenarios.map(s => (
+                  <Card key={s.name} className={s.name === 'Balanced' ? 'border-primary/50 ring-1 ring-primary/20' : ''}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center justify-between">
+                        {s.name}
+                        {s.name === 'Balanced' && <Badge className="text-xs">Recommended</Badge>}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <p className="text-xs text-muted-foreground">{s.description}</p>
+                      <p className="text-lg font-bold">{fmt(s.projected_total)}</p>
+                      {s.delta > 0 && <Badge variant="secondary" className="text-xs">Saves {fmt(s.delta)}</Badge>}
+                      {s.changes.length > 0 && (
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {s.changes.slice(0, 5).map((c, i) => (
+                            <div key={i} className="text-xs flex items-center gap-1">
+                              <Badge variant={c.action === 'KEEP' ? 'default' : c.action === 'REMOVE' ? 'destructive' : 'secondary'} className="text-xs shrink-0">
+                                {c.action}
+                              </Badge>
+                              <span className="truncate">{c.description}</span>
+                            </div>
+                          ))}
+                          {s.changes.length > 5 && <p className="text-xs text-muted-foreground">+{s.changes.length - 5} more</p>}
+                        </div>
+                      )}
+                      {s.name !== 'Premium' && s.changes.length > 0 && (
+                        <Button size="sm" variant="outline" className="w-full" onClick={async () => {
+                          toast({ title: `Applying ${s.name} scenario...` });
+                          setBudgetScenarios(null);
+                          // For now, show what would change - full apply would modify line items
+                          toast({ title: `${s.name} scenario`, description: `Would adjust ${s.changes.length} items to reach ${fmt(s.projected_total)}. Apply in chat for precise control.` });
+                        }}>Apply {s.name}</Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1291,17 +1358,18 @@ export default function NewEstimate() {
               <CardHeader><CardTitle className="text-sm">Photos & Analysis</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 {estimateDbId && (
-                  <div className="flex gap-2 items-end flex-wrap">
-                    <div className="flex-1 min-w-[200px]">
-                      <Label>File URL</Label>
-                      <Input value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} placeholder="https://..." />
-                    </div>
-                    <div className="flex-1 min-w-[150px]">
-                      <Label>Caption</Label>
-                      <Input value={mediaCaption} onChange={e => setMediaCaption(e.target.value)} placeholder="Photo caption" />
-                    </div>
-                    <Button onClick={addMedia} disabled={!mediaUrl}><ImagePlus className="mr-1 h-4 w-4" />Add</Button>
-                  </div>
+                  <MediaUploader
+                    folder="estimates"
+                    onUploaded={async (url, cap) => {
+                      await saveEstimateMedia({
+                        media_id: uid(), estimate_id: estimateDbId,
+                        file_url: url, caption: cap,
+                        include_in_internal_pdf: true, include_in_public_pdf: false,
+                      } as EstimateMedia);
+                      const med = await getEstimateMedia(estimateDbId);
+                      setMedia(med);
+                    }}
+                  />
                 )}
                 {media.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No photos attached yet.</p>}
                 <div className="space-y-4">
