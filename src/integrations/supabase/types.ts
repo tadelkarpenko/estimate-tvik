@@ -117,6 +117,7 @@ export type Database = {
           contract_status: string
           cost_volatility_index: number
           created_at: string
+          data_completeness_score: number
           earned_revenue: number
           estimate_id: string
           execution_priority_score: number
@@ -149,6 +150,7 @@ export type Database = {
           contract_status?: string
           cost_volatility_index?: number
           created_at?: string
+          data_completeness_score?: number
           earned_revenue?: number
           estimate_id: string
           execution_priority_score?: number
@@ -181,6 +183,7 @@ export type Database = {
           contract_status?: string
           cost_volatility_index?: number
           created_at?: string
+          data_completeness_score?: number
           earned_revenue?: number
           estimate_id?: string
           execution_priority_score?: number
@@ -613,11 +616,13 @@ export type Database = {
           ai_scope: string
           ai_suggestions_last_json: string
           assumptions_rich: string
+          calc_status: string
           city: string
           clarification_answers_json: string
           client_email: string
           client_name: string
           client_phone: string
+          completeness_score: number
           contingency_pct: number
           cost_structure_json: string
           created_at: string
@@ -637,6 +642,7 @@ export type Database = {
           last_revision_summary: string
           line_items_json: string
           material_subtotal: number
+          material_volatility_flag: boolean
           overall_risk_level: string
           overhead_pct: number
           profit_pct: number
@@ -658,7 +664,9 @@ export type Database = {
           total_low: number
           updated_at: string
           user_id: string
+          validity_days: number
           version: string
+          volatility_reviewed: boolean
           zip: string
         }
         Insert: {
@@ -666,11 +674,13 @@ export type Database = {
           ai_scope?: string
           ai_suggestions_last_json?: string
           assumptions_rich?: string
+          calc_status?: string
           city?: string
           clarification_answers_json?: string
           client_email?: string
           client_name?: string
           client_phone?: string
+          completeness_score?: number
           contingency_pct?: number
           cost_structure_json?: string
           created_at?: string
@@ -690,6 +700,7 @@ export type Database = {
           last_revision_summary?: string
           line_items_json?: string
           material_subtotal?: number
+          material_volatility_flag?: boolean
           overall_risk_level?: string
           overhead_pct?: number
           profit_pct?: number
@@ -711,7 +722,9 @@ export type Database = {
           total_low?: number
           updated_at?: string
           user_id: string
+          validity_days?: number
           version?: string
+          volatility_reviewed?: boolean
           zip?: string
         }
         Update: {
@@ -719,11 +732,13 @@ export type Database = {
           ai_scope?: string
           ai_suggestions_last_json?: string
           assumptions_rich?: string
+          calc_status?: string
           city?: string
           clarification_answers_json?: string
           client_email?: string
           client_name?: string
           client_phone?: string
+          completeness_score?: number
           contingency_pct?: number
           cost_structure_json?: string
           created_at?: string
@@ -743,6 +758,7 @@ export type Database = {
           last_revision_summary?: string
           line_items_json?: string
           material_subtotal?: number
+          material_volatility_flag?: boolean
           overall_risk_level?: string
           overhead_pct?: number
           profit_pct?: number
@@ -764,7 +780,9 @@ export type Database = {
           total_low?: number
           updated_at?: string
           user_id?: string
+          validity_days?: number
           version?: string
+          volatility_reviewed?: boolean
           zip?: string
         }
         Relationships: []

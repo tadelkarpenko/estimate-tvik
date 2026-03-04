@@ -36,9 +36,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase } from 'lucide-react';
+import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { EstimateRevisionLog } from '@/lib/types';
+import { computeCompletenessScore, evaluateApprovalGate, computeCalcStatus, type CompletenessChecklist, type ApprovalGateResult } from '@/lib/reliabilityEngine';
+import { Progress } from '@/components/ui/progress';
 
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
@@ -53,7 +55,7 @@ const defaultEst: Partial<Estimate> = {
   crew_size: 2, hours_per_day: 8, subtotal_labor_hours: 0, estimated_duration_days: 0,
   internal_notes: '', public_notes: '',
   clarification_answers_json: '[]', ai_suggestions_last_json: '[]',
-};
+} as any;
 
 const FINISH_MULTS: Record<FinishLevel, number> = { Basic: 1.00, Mid: 1.15, High: 1.30, Luxury: 1.55 };
 
@@ -217,6 +219,10 @@ export default function NewEstimate() {
       merged.timeline_rich = generateTimeline(merged);
       merged.created_at = merged.created_at || new Date().toISOString();
       merged.status = 'Ready' as EstimateStatus;
+      // Compute and save reliability metrics
+      const { score } = computeCompletenessScore(form.project_type as ProjectType || 'Full Rehab', costResult.line_items);
+      (merged as any).completeness_score = score;
+      (merged as any).calc_status = 'Fresh';
 
       toast({ title: 'Running AI analysis...' });
       const [scope, audit] = await Promise.all([generateScopeAI(merged), generateAuditAI({ ...merged, estimate_id: estId })]);
@@ -683,6 +689,17 @@ export default function NewEstimate() {
 
   const hasPendingRows = dbLineItems.some(li => li.pending_confirmation);
 
+  // ─── Reliability computations ───
+  const approvalGate = evaluateApprovalGate(form, dbLineItems);
+  const { score: completenessScore, checklist: completenessChecklist } = computeCompletenessScore(
+    (form.project_type as ProjectType) || 'Full Rehab', dbLineItems
+  );
+  const calcStatus = computeCalcStatus(form);
+  const marginMult = (1 + (form.overhead_pct || 0.1)) * (1 + (form.profit_pct || 0.2)) * (1 + (form.contingency_pct || 0.1));
+  const effectiveMarginPct = marginMult > 0 ? Math.round((1 - 1/marginMult) * 10000) / 100 : 0;
+  const materialVolatility = (form as any).material_volatility_flag || false;
+  const volatilityReviewed = (form as any).volatility_reviewed || false;
+
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
   return (
@@ -814,17 +831,91 @@ export default function NewEstimate() {
         )}
       </div>
 
+      {/* Pricing Health Panel */}
+      {form.subtotal! > 0 && (
+        <Card className="border-primary/20">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Gauge className="h-4 w-4" />Estimate Health</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+              <MiniCard label="Total Range" value={`${fmt(form.total_low)} – ${fmt(form.total_high)}`} />
+              <MiniCard label="Margin" value={`${effectiveMarginPct}%`} />
+              <MiniCard label="Completeness" value={`${completenessScore}%`} />
+              <MiniCard label="Calc Status" value={calcStatus} />
+              <MiniCard label="Validity" value={`${(form as any).validity_days || 14} days`} />
+              <MiniCard label="Volatility" value={materialVolatility ? '⚠ Flagged' : 'Normal'} />
+            </div>
+            <div className="flex items-center gap-2">
+              <Progress value={completenessScore} className="flex-1 h-2" />
+              <span className="text-xs font-mono">{completenessScore}%</span>
+              {completenessScore < 80 && <Badge variant="destructive" className="text-xs">Below 80%</Badge>}
+              {completenessScore >= 80 && <Badge className="text-xs">Ready</Badge>}
+            </div>
+            {completenessScore < 100 && (
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <p className="font-medium">Missing scope items:</p>
+                {completenessChecklist.filter(c => !c.present).map(c => (
+                  <span key={c.label} className="inline-block mr-2">• {c.label}</span>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">Validity (days)</Label>
+                <Input type="number" className="w-20 h-7 text-sm" value={(form as any).validity_days || 14}
+                  onChange={e => update({ validity_days: Number(e.target.value) } as any)} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={materialVolatility}
+                  onCheckedChange={v => update({ material_volatility_flag: v } as any)} />
+                <Label className="text-xs">Material Volatility Flag</Label>
+              </div>
+              {materialVolatility && (
+                <div className="flex items-center gap-2">
+                  <Switch checked={volatilityReviewed}
+                    onCheckedChange={v => update({ volatility_reviewed: v } as any)} />
+                  <Label className="text-xs">Volatility Reviewed</Label>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Status Workflow Buttons */}
       {form.estimate_id && form.status !== 'Draft' && (
-        <div className="flex flex-wrap gap-2">
-          {form.status !== 'Sent' && <Button variant="outline" onClick={() => setStatus('Sent')} className="text-blue-600 border-blue-300 hover:bg-blue-50"><Send className="mr-1 h-4 w-4" />Mark as Sent</Button>}
-          {form.status !== 'Accepted' && <Button variant="outline" onClick={() => setStatus('Accepted')} className="text-green-600 border-green-300 hover:bg-green-50"><CheckCircle className="mr-1 h-4 w-4" />Mark as Accepted</Button>}
-          {form.status !== 'Rejected' && <Button variant="outline" onClick={() => setStatus('Rejected')} className="text-red-600 border-red-300 hover:bg-red-50"><XCircle className="mr-1 h-4 w-4" />Mark as Rejected</Button>}
-          {form.status === 'Accepted' && (
-            <Button variant="outline" onClick={() => navigate('/contracts')} className="border-primary/50">
-              <Briefcase className="mr-1 h-4 w-4" />View Contract
-            </Button>
+        <div className="space-y-2">
+          {/* Approval Gate warnings */}
+          {!approvalGate.canSend && form.status !== 'Sent' && form.status !== 'Accepted' && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
+              <ShieldCheck className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium text-amber-800">Send Gate — Issues to resolve:</p>
+                <ul className="text-xs text-amber-700 mt-1 space-y-0.5">
+                  {approvalGate.reasons.map((r, i) => <li key={i}>• {r}</li>)}
+                </ul>
+              </div>
+            </div>
           )}
+          <div className="flex flex-wrap gap-2">
+            {form.status !== 'Sent' && (
+              <Button variant="outline" onClick={() => {
+                if (!approvalGate.canSend) {
+                  toast({ title: 'Cannot send', description: approvalGate.reasons[0], variant: 'destructive' });
+                  return;
+                }
+                setStatus('Sent');
+              }} className={approvalGate.canSend ? 'text-blue-600 border-blue-300 hover:bg-blue-50' : 'opacity-50'}>
+                <Send className="mr-1 h-4 w-4" />Mark as Sent
+              </Button>
+            )}
+            {form.status !== 'Accepted' && <Button variant="outline" onClick={() => setStatus('Accepted')} className="text-green-600 border-green-300 hover:bg-green-50"><CheckCircle className="mr-1 h-4 w-4" />Mark as Accepted</Button>}
+            {form.status !== 'Rejected' && <Button variant="outline" onClick={() => setStatus('Rejected')} className="text-red-600 border-red-300 hover:bg-red-50"><XCircle className="mr-1 h-4 w-4" />Mark as Rejected</Button>}
+            {form.status === 'Accepted' && (
+              <Button variant="outline" onClick={() => navigate('/contracts')} className="border-primary/50">
+                <Briefcase className="mr-1 h-4 w-4" />View Contract
+              </Button>
+            )}
+          </div>
         </div>
       )}
 

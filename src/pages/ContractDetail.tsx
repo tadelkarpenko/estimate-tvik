@@ -11,6 +11,7 @@ import {
 import { getEstimateLineItems } from '@/lib/store';
 import { recomputeContractWIP, computeCashForecast, computeTradeDrift, driftEntriesToFactors, type TradeDriftEntry } from '@/lib/contractEngine';
 import { computeSubcontractExposure } from '@/lib/phase5Engine';
+import { computeContractDataQuality } from '@/lib/reliabilityEngine';
 import {
   getSubcontracts, saveSubcontract, getSubcontractInvoices, getSchedulePhases,
   queueExecutionEvent, getLatestAdvisories, triggerIntelligenceProcessing,
@@ -263,7 +264,7 @@ export default function ContractDetail() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-8 gap-3">
         <MiniCard label="Baseline" value={fmt(contract.baseline_contract_value)} />
         <MiniCard label="Net Value" value={fmt(contract.net_contract_value)} />
         <MiniCard label="% Complete" value={`${contract.percent_complete.toFixed(1)}%`} />
@@ -271,6 +272,12 @@ export default function ContractDetail() {
         <MiniCard label="Proj. Profit" value={fmt(contract.projected_final_profit)} />
         <MiniCard label="Margin" value={pct(contract.margin_current_pct)} />
         <MiniCard label="Quadrant" value={(contract as any).risk_quadrant || 'Stable'} />
+        <MiniCard label="Data Quality" value={`${computeContractDataQuality(lineItems.map(li => ({
+          actual_labor_cost_to_date: (li as any).actual_labor_cost_to_date || 0,
+          actual_material_cost_to_date: (li as any).actual_material_cost_to_date || 0,
+          percent_complete: (li as any).percent_complete || 0,
+          wip_status: (li as any).wip_status || 'Not Started',
+        })))}%`} />
       </div>
 
       {/* Latest Advisory Banner */}
