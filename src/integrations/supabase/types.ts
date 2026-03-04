@@ -105,6 +105,170 @@ export type Database = {
           },
         ]
       }
+      contract_chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          message_id: string
+          role: string
+          suggested_changes_json: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_id: string
+          role?: string
+          suggested_changes_json?: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_id?: string
+          role?: string
+          suggested_changes_json?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "contract_chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_chat_threads: {
+        Row: {
+          contract_id: string
+          created_at: string
+          id: string
+          thread_id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          contract_id: string
+          created_at?: string
+          id?: string
+          thread_id: string
+          title?: string
+          user_id: string
+        }
+        Update: {
+          contract_id?: string
+          created_at?: string
+          id?: string
+          thread_id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_chat_threads_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_media: {
+        Row: {
+          caption: string
+          contract_id: string
+          created_at: string
+          file_url: string
+          id: string
+          include_in_internal_pdf: boolean
+          media_id: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string
+          contract_id: string
+          created_at?: string
+          file_url?: string
+          id?: string
+          include_in_internal_pdf?: boolean
+          media_id: string
+          user_id: string
+        }
+        Update: {
+          caption?: string
+          contract_id?: string
+          created_at?: string
+          file_url?: string
+          id?: string
+          include_in_internal_pdf?: boolean
+          media_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_media_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_media_analysis: {
+        Row: {
+          allowance_risk_flags_json: string
+          analysis_id: string
+          conditional_items_json: string
+          confidence: string
+          created_at: string
+          id: string
+          media_id: string
+          observed_conditions_json: string
+          questions_needed_json: string
+          user_id: string
+        }
+        Insert: {
+          allowance_risk_flags_json?: string
+          analysis_id: string
+          conditional_items_json?: string
+          confidence?: string
+          created_at?: string
+          id?: string
+          media_id: string
+          observed_conditions_json?: string
+          questions_needed_json?: string
+          user_id: string
+        }
+        Update: {
+          allowance_risk_flags_json?: string
+          analysis_id?: string
+          conditional_items_json?: string
+          confidence?: string
+          created_at?: string
+          id?: string
+          media_id?: string
+          observed_conditions_json?: string
+          questions_needed_json?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_media_analysis_media_id_fkey"
+            columns: ["media_id"]
+            isOneToOne: false
+            referencedRelation: "contract_media"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contracts: {
         Row: {
           baseline_contract_value: number
@@ -454,10 +618,13 @@ export type Database = {
           confidence: string
           contract_id: string | null
           created_at: string
+          created_by: string
           description: string
           estimate_id: string
           evidence_source: string
           id: string
+          include_in_internal_pdf: boolean
+          include_in_public_pdf: boolean
           labor_hours_per_unit: number
           labor_hours_total: number
           labor_total: number
@@ -487,10 +654,13 @@ export type Database = {
           confidence?: string
           contract_id?: string | null
           created_at?: string
+          created_by?: string
           description?: string
           estimate_id: string
           evidence_source?: string
           id?: string
+          include_in_internal_pdf?: boolean
+          include_in_public_pdf?: boolean
           labor_hours_per_unit?: number
           labor_hours_total?: number
           labor_total?: number
@@ -520,10 +690,13 @@ export type Database = {
           confidence?: string
           contract_id?: string | null
           created_at?: string
+          created_by?: string
           description?: string
           estimate_id?: string
           evidence_source?: string
           id?: string
+          include_in_internal_pdf?: boolean
+          include_in_public_pdf?: boolean
           labor_hours_per_unit?: number
           labor_hours_total?: number
           labor_total?: number

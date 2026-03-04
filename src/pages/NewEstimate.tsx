@@ -587,7 +587,10 @@ export default function NewEstimate() {
             confidence: action.confidence || 'Medium',
             evidence_source: action.evidence_source || 'Chat',
             notes,
-          });
+            include_in_public_pdf: (action as any).include_in_public_pdf !== false,
+            include_in_internal_pdf: true,
+            created_by: 'AI',
+          } as any);
         }
         // MODIFY_QTY / MODIFY_UNIT_COST: create proposed change row instead of editing existing
         if (action.type === 'MODIFY_QTY' || action.type === 'MODIFY_UNIT_COST') {
@@ -823,8 +826,14 @@ export default function NewEstimate() {
         <Button onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
         {form.subtotal! > 0 && (
           <>
-            <Button variant="outline" onClick={() => generatePublicPDF(form as Estimate)}><FileDown className="mr-1 h-4 w-4" />Public PDF</Button>
-            <Button variant="outline" onClick={() => generateInternalPDF(form as Estimate)}><FileDown className="mr-1 h-4 w-4" />Internal PDF</Button>
+            <Button variant="outline" onClick={() => {
+              if ((form as any).calc_status !== 'Fresh') {
+                toast({ title: 'Recompute required', description: 'Regenerate estimate before exporting PDF.', variant: 'destructive' });
+                return;
+              }
+              generatePublicPDF(form as Estimate, dbLineItems);
+            }}><FileDown className="mr-1 h-4 w-4" />Public PDF</Button>
+            <Button variant="outline" onClick={() => generateInternalPDF(form as Estimate, dbLineItems)}><FileDown className="mr-1 h-4 w-4" />Internal PDF</Button>
             <Button variant="outline" onClick={() => createRevision()}>Create Revision</Button>
             <Button variant="outline" onClick={duplicate}><Copy className="mr-1 h-4 w-4" />Duplicate</Button>
           </>
@@ -1007,6 +1016,7 @@ export default function NewEstimate() {
                         <TableHead className="text-right">Mat $</TableHead>
                         <TableHead className="text-right">Line Total</TableHead>
                         <TableHead>Source</TableHead>
+                        <TableHead>PDF</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1033,6 +1043,16 @@ export default function NewEstimate() {
                           <TableCell className="text-right font-bold">{fmt(li.line_total)}</TableCell>
                           <TableCell>
                             <SourcePill source={li.source} confidence={li.confidence} evidenceSource={li.evidence_source} />
+                          </TableCell>
+                          <TableCell>
+                            <Checkbox 
+                              checked={(li as any).include_in_public_pdf !== false} 
+                              onCheckedChange={async (checked) => {
+                                const updated = { ...li, include_in_public_pdf: !!checked } as any;
+                                await upsertEstimateLineItems([updated]);
+                                setDbLineItems(prev => prev.map(item => item.line_id === li.line_id ? updated : item));
+                              }} 
+                            />
                           </TableCell>
                           <TableCell>
                             {li.locked && <Lock className="h-3 w-3 text-amber-600 inline mr-1" />}
