@@ -135,6 +135,27 @@ export const linkLineItemsToContract = async (estimateDbId: string, contractDbId
   if (error) throw error;
 };
 
+// ─── Trade Drift: fetch completed line items across all contracts ───
+
+export const getCompletedLineItemsForDrift = async (): Promise<Array<{
+  phase: string; labor_total: number; material_total: number;
+  actual_labor_cost_to_date: number; actual_material_cost_to_date: number;
+  wip_status: string;
+}>> => {
+  const { data, error } = await supabase
+    .from('estimate_line_items')
+    .select('phase, labor_total, material_total, actual_labor_cost_to_date, actual_material_cost_to_date, wip_status')
+    .eq('wip_status', 'Completed')
+    .not('contract_id', 'is', null);
+  if (error) throw error;
+  return (data || []).map(r => ({
+    phase: r.phase, labor_total: Number(r.labor_total), material_total: Number(r.material_total),
+    actual_labor_cost_to_date: Number(r.actual_labor_cost_to_date),
+    actual_material_cost_to_date: Number(r.actual_material_cost_to_date),
+    wip_status: r.wip_status,
+  }));
+};
+
 // ─── Row mapper ───
 
 function rowToContract(r: any): Contract {

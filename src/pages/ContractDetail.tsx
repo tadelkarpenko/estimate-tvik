@@ -6,9 +6,10 @@ import type { EstimateLineItem } from '@/lib/types';
 import {
   getContract, updateContract, getChangeOrders, saveChangeOrder,
   approveChangeOrder, getAuditLog, logAuditEntry, updateLineItemWIP,
+  getCompletedLineItemsForDrift,
 } from '@/lib/contractStore';
 import { getEstimateLineItems } from '@/lib/store';
-import { recomputeContractWIP, computeCashForecast } from '@/lib/contractEngine';
+import { recomputeContractWIP, computeCashForecast, computeTradeDrift, driftEntriesToFactors, type TradeDriftEntry } from '@/lib/contractEngine';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -19,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertTriangle, CheckCircle, Plus, Shield } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ContractDetail() {
@@ -30,6 +31,7 @@ export default function ContractDetail() {
   const [lineItems, setLineItems] = useState<EstimateLineItem[]>([]);
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([]);
   const [auditLog, setAuditLog] = useState<ContractAuditEntry[]>([]);
+  const [driftEntries, setDriftEntries] = useState<TradeDriftEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [coModal, setCoModal] = useState(false);
   const [coForm, setCoForm] = useState({ description: '', change_type: 'Scope Correction' as ChangeOrderType, delta_value: 0 });
@@ -43,14 +45,16 @@ export default function ContractDetail() {
       const c = await getContract(id);
       if (!c) { navigate('/contracts'); return; }
       setContract(c);
-      const [items, cos, log] = await Promise.all([
+      const [items, cos, log, completedItems] = await Promise.all([
         getEstimateLineItems(c.estimate_id),
         getChangeOrders(c.id!),
         getAuditLog(c.id!),
+        getCompletedLineItemsForDrift(),
       ]);
       setLineItems(items);
       setChangeOrders(cos);
       setAuditLog(log);
+      setDriftEntries(computeTradeDrift(completedItems));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [id, navigate]);
@@ -87,7 +91,8 @@ export default function ContractDetail() {
   // WIP recompute
   const recompute = async () => {
     if (!contract) return;
-    const updates = recomputeContractWIP(contract, lineItems);
+    const tradeDriftFactors = driftEntriesToFactors(driftEntries);
+    const updates = recomputeContractWIP(contract, lineItems, tradeDriftFactors);
     // Cash forecast
     let milestones: PaymentMilestone[] = [];
     try { milestones = JSON.parse(contract.payment_schedule_json); } catch {}
@@ -205,6 +210,7 @@ export default function ContractDetail() {
           <TabsTrigger value="wip">Line-Item WIP</TabsTrigger>
           <TabsTrigger value="change-orders">Change Orders ({changeOrders.length})</TabsTrigger>
           <TabsTrigger value="cash">Cash Forecast</TabsTrigger>
+          <TabsTrigger value="drift">Trade Drift{driftEntries.some(d => d.alert) ? ' ⚠' : ''}</TabsTrigger>
           <TabsTrigger value="margin">Margin & Risk</TabsTrigger>
           <TabsTrigger value="audit">Audit Log</TabsTrigger>
         </TabsList>
@@ -358,6 +364,59 @@ export default function ContractDetail() {
               })()}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Trade Drift Tab */}
+        <TabsContent value="drift" className="space-y-4">
+          {driftEntries.length === 0 ? (
+            <Card><CardContent className="py-6 text-center text-muted-foreground">No completed line items with actuals yet. Complete WIP tracking to generate drift data.</CardContent></Card>
+          ) : (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Trade Cost Drift Analysis</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Trade</TableHead>
+                      <TableHead className="text-right">Estimated Cost</TableHead>
+                      <TableHead className="text-right">Actual Cost</TableHead>
+                      <TableHead className="text-right">Drift Factor</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {driftEntries.map(d => (
+                      <TableRow key={d.trade}>
+                        <TableCell className="font-medium">{d.trade}</TableCell>
+                        <TableCell className="text-right">{fmt(d.estimated_cost)}</TableCell>
+                        <TableCell className="text-right">{fmt(d.actual_cost)}</TableCell>
+                        <TableCell className="text-right font-mono font-bold">
+                          <span className={d.alert ? (d.drift_factor > 1 ? 'text-destructive' : 'text-green-600') : ''}>
+                            {d.drift_factor.toFixed(3)}x
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {d.alert ? (
+                            <Badge variant="destructive" className="text-xs flex items-center gap-1 w-fit">
+                              <AlertTriangle className="h-3 w-3" />
+                              {d.drift_factor > 1.12 ? 'Over budget' : 'Under budget'}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">Normal</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Drift factor = actual cost ÷ estimated cost. Alert threshold: &gt;1.12x or &lt;0.90x.
+                  Drift factors are applied automatically during WIP recompute to adjust projected costs.
+                  AI may suggest CostLibrary review — no auto-updates.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Margin & Risk Tab */}
