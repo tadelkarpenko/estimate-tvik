@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText, Brain, Zap, Calendar, Clock, ImagePlus, Camera, Trash2 } from 'lucide-react';
+import { MediaUploader } from '@/components/MediaUploader';
 import { generateContractPDF } from '@/lib/pdfGenerator';
 import { useToast } from '@/hooks/use-toast';
 
@@ -790,30 +791,19 @@ export default function ContractDetail() {
               <CardTitle className="text-base">Photos & Documents</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Upload */}
-              <div className="flex gap-2 items-end">
-                <div className="flex-1">
-                  <Label>Image URL</Label>
-                  <Input value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} placeholder="https://..." />
-                </div>
-                <div className="flex-1">
-                  <Label>Caption</Label>
-                  <Input value={mediaCaption} onChange={e => setMediaCaption(e.target.value)} placeholder="Photo description" />
-                </div>
-                <Button size="sm" onClick={async () => {
-                  if (!contract || !mediaUrl.trim()) return;
+              {/* Real file upload */}
+              <MediaUploader
+                folder="contracts"
+                onUploaded={async (url, cap) => {
+                  if (!contract) return;
                   await saveContractMedia({
                     media_id: uid(), contract_id: contract.id!,
-                    file_url: mediaUrl, caption: mediaCaption,
+                    file_url: url, caption: cap,
                     include_in_internal_pdf: true,
                   });
-                  setMediaUrl(''); setMediaCaption('');
-                  toast({ title: 'Photo added' });
                   await load();
-                }} disabled={!mediaUrl.trim()}>
-                  <ImagePlus className="h-4 w-4 mr-1" />Add
-                </Button>
-              </div>
+                }}
+              />
 
               {/* Gallery */}
               {contractMedia.length === 0 ? (
