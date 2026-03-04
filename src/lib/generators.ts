@@ -74,7 +74,8 @@ export async function generateScopeAI(est: Partial<Estimate>): Promise<string> {
 }
 
 export async function generateAuditAI(est: Partial<Estimate>): Promise<string> {
-  const estimates = getEstimates().filter(e => e.project_type === est.project_type && e.subtotal > 0 && e.estimate_id !== est.estimate_id);
+  const allEstimates = await getEstimates();
+  const estimates = allEstimates.filter(e => e.project_type === est.project_type && e.subtotal > 0 && e.estimate_id !== est.estimate_id);
   const costPerSqft = (est.subtotal || 0) / (est.sqft || 1);
   const laborRatio = (est.labor_subtotal || 0) / (est.subtotal || 1);
   const riskRatioHigh = (est.risk_cost_high || 0) / (est.subtotal || 1);

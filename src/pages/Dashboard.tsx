@@ -1,13 +1,26 @@
-import { useMemo } from 'react';
-import { getEstimates, getCostAudits, getCostLibrary } from '@/lib/store';
+import { useState, useEffect } from 'react';
+import { getEstimates, getCostAudits, getCostLibrary, initStore } from '@/lib/store';
+import type { Estimate, CostAudit, CostLibraryItem } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 
 export default function Dashboard() {
-  const estimates = useMemo(() => getEstimates(), []);
-  const audits = useMemo(() => getCostAudits(), []);
-  const costLib = useMemo(() => getCostLibrary(), []);
+  const [estimates, setEstimates] = useState<Estimate[]>([]);
+  const [audits, setAudits] = useState<CostAudit[]>([]);
+  const [costLib, setCostLib] = useState<CostLibraryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      await initStore();
+      const [e, a, c] = await Promise.all([getEstimates(), getCostAudits(), getCostLibrary()]);
+      setEstimates(e); setAudits(a); setCostLib(c);
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
   const now = Date.now();
   const d7 = now - 7 * 86400000;

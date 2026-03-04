@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getCostAudits, saveCostAudit } from '@/lib/store';
 import type { CostAudit, AuditStatus } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -9,18 +9,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 
 export default function CostAuditPage() {
-  const [refresh, setRefresh] = useState(0);
+  const [audits, setAudits] = useState<CostAudit[]>([]);
   const [selected, setSelected] = useState<CostAudit | null>(null);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const audits = useMemo(() => getCostAudits().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [refresh]);
+  const load = useCallback(async () => {
+    const all = await getCostAudits();
+    setAudits(all);
+    setLoading(false);
+  }, []);
 
-  const updateStatus = (audit: CostAudit, status: AuditStatus) => {
-    saveCostAudit({ ...audit, status });
+  useEffect(() => { load(); }, [load]);
+
+  const updateStatus = async (audit: CostAudit, status: AuditStatus) => {
+    await saveCostAudit({ ...audit, status });
     setSelected({ ...audit, status });
-    setRefresh(r => r + 1);
+    await load();
     toast({ title: `Marked ${status}` });
   };
+
+  if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
   return (
     <div className="space-y-4">

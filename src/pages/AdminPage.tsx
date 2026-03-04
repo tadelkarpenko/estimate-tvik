@@ -26,12 +26,6 @@ export default function AdminPage() {
     }
   };
 
-  const clearData = () => {
-    if (!confirm('Clear ALL local data? This cannot be undone.')) return;
-    localStorage.clear();
-    window.location.reload();
-  };
-
   return (
     <div className="space-y-6 max-w-lg">
       <h1 className="text-2xl font-bold">Admin</h1>
@@ -48,8 +42,7 @@ export default function AdminPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">System</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">Version: 1.0.0 | Data stored in browser localStorage</p>
-          <Button variant="destructive" onClick={clearData}>Clear All Local Data</Button>
+          <p className="text-sm text-muted-foreground">Version: 1.0.0 | Data stored in Lovable Cloud</p>
         </CardContent>
       </Card>
     </div>
