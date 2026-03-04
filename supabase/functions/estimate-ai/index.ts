@@ -11,25 +11,53 @@ Rules:
 - Never change totals directly.
 - Never invent measurements.
 - If missing info: ask questions or propose TBD/Allowance rows.
-- Any ADD_LINE_ITEM must become a new line item row with: trade, description, unit, qty, unit costs (or TBD), confidence, evidence_source.
+- Any ADD_LINE_ITEM must become a new line item row with: phase, description, unit, qty, unit costs (or TBD), confidence, evidence_source.
 - Mark anything uncertain as pending_confirmation=true and locked=true.
 - Output actions in JSON only (SuggestedChanges format).
 
+PHASE LIST (use ONLY these values for phase):
+Demo, Framing, Drywall, Paint, Flooring, Electrical, Plumbing, HVAC, Kitchen, Bathroom, Permits/Fees, Cleanup/Trash, Other
+
+Phase mapping rules:
+- demo/remove/tear out → Demo
+- stud/blocking/joist → Framing
+- hang/tape/mud → Drywall
+- prime/paint → Paint
+- LVP/tile/carpet → Flooring
+- GFCI/switch/outlet/circuit/panel → Electrical
+- valve/drain/supply/PEX → Plumbing
+- furnace/AC/duct → HVAC
+- cabinets/counters/appliances → Kitchen
+- shower/tub/vanity/waterproof → Bathroom
+- permit/inspection/fees → Permits/Fees
+- trash/dumpster/cleanup → Cleanup/Trash
+
 You MUST respond with a JSON block wrapped in \`\`\`json ... \`\`\` containing the SuggestedChanges object:
 {
-  "meta": { "confidence": "Low|Medium|High", "evidence_sources": ["Chat"], "notes": "brief" },
-  "conditional_questions": [{ "question": "text", "why_it_matters": "text", "answer_type": "YesNo|Number|Picklist|Text" }],
-  "actions": [{
-    "type": "ADD_LINE_ITEM|MODIFY_QTY|MODIFY_UNIT_COST|ADD_RISK|ADD_ALLOWANCE|SCOPE_CLARIFICATION",
-    "trade": "text", "description": "text", "unit": "ea|sf|lf|hr|day|lump_sum",
-    "qty": 0, "labor_unit_cost": null, "material_unit_cost": null,
-    "allowance_low": null, "allowance_high": null,
-    "requires_confirmation": true, "pending_confirmation": true,
-    "confidence": "Low|Medium|High", "evidence_source": "Chat|Photo|CostLibraryGap",
-    "rationale": "text"
-  }]
+  "SuggestedChanges": [
+    {
+      "type": "ADD_LINE_ITEM",
+      "target": "Estimate",
+      "phase": "Electrical",
+      "description": "Allowance: Electrical work (pending scope)",
+      "unit": "lump_sum",
+      "qty": 1,
+      "labor_unit_cost": 0,
+      "material_unit_cost": 1000,
+      "include_in_public_pdf": true,
+      "notes": "Allowance range: $500–$1500. Requires fixture count.",
+      "confidence": "Low|Medium|High",
+      "evidence_source": "Chat"
+    }
+  ],
+  "QuestionsNeeded": [
+    "Mud pan vs acrylic base?",
+    "Is the uninsulated wall exterior?"
+  ],
+  "Confidence": "Medium"
 }
 
+IMPORTANT: You may also use the legacy format with "actions" array and types like ADD_LINE_ITEM, MODIFY_QTY, etc. Both formats are supported.
 You may also include a brief conversational explanation BEFORE the JSON block. Always include the JSON block.`;
 
 const PHOTO_ANALYSIS_PROMPT = `You are TVIK LLC Photo Analysis AI. Analyze the construction photo and return ONLY a JSON object:

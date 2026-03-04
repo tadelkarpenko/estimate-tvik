@@ -4,7 +4,26 @@ export type FinishLevel = 'Basic' | 'Mid' | 'High' | 'Luxury';
 export type QtyRule = 'sqft' | 'fixture' | 'lump_sum' | 'each' | 'lf' | 'hour';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
 export type AuditStatus = 'Open' | 'Accepted' | 'Ignored';
-export type Phase = 'Demo' | 'Protection' | 'Framing' | 'Drywall' | 'Paint' | 'Flooring' | 'Electrical' | 'Plumbing' | 'HVAC' | 'Kitchen' | 'Bath' | 'Exterior' | 'Roofing' | 'Permits' | 'Cleaning' | 'Other';
+export type Phase = 'Demo' | 'Framing' | 'Drywall' | 'Paint' | 'Flooring' | 'Electrical' | 'Plumbing' | 'HVAC' | 'Kitchen' | 'Bathroom' | 'Permits/Fees' | 'Cleanup/Trash' | 'Other';
+export const PHASE_LIST: Phase[] = ['Demo', 'Framing', 'Drywall', 'Paint', 'Flooring', 'Electrical', 'Plumbing', 'HVAC', 'Kitchen', 'Bathroom', 'Permits/Fees', 'Cleanup/Trash', 'Other'];
+
+/** Map AI/legacy phase keywords to canonical phases */
+export function normalizePhase(raw: string): Phase {
+  const s = (raw || '').toLowerCase().trim();
+  if (/demo|remove|tear.?out/.test(s)) return 'Demo';
+  if (/stud|blocking|joist|fram/.test(s)) return 'Framing';
+  if (/hang|tape|mud|drywall/.test(s)) return 'Drywall';
+  if (/prime|paint/.test(s)) return 'Paint';
+  if (/lvp|tile|carpet|floor/.test(s)) return 'Flooring';
+  if (/gfci|switch|outlet|circuit|panel|electr/.test(s)) return 'Electrical';
+  if (/valve|drain|supply|pex|plumb/.test(s)) return 'Plumbing';
+  if (/furnace|ac|duct|hvac/.test(s)) return 'HVAC';
+  if (/cabinet|counter|appliance|kitchen/.test(s)) return 'Kitchen';
+  if (/shower|tub|vanity|waterproof|bath/.test(s)) return 'Bathroom';
+  if (/permit|inspection|fee/.test(s)) return 'Permits/Fees';
+  if (/trash|dumpster|cleanup|clean/.test(s)) return 'Cleanup/Trash';
+  return 'Other';
+}
 export type LineItemUnit = 'ea' | 'sf' | 'lf' | 'fixture' | 'hr' | 'day' | 'lump_sum';
 export type LineItemSource = 'CostLibrary' | 'Assembly' | 'Manual' | 'AI_Suggestion' | 'AI Draft' | 'PhotoAI';
 export type CrewTrade = 'Demo' | 'Framing' | 'Drywall' | 'Paint' | 'Flooring' | 'Electrical' | 'Plumbing' | 'HVAC' | 'General' | 'Exterior' | 'Roofing';
@@ -236,12 +255,12 @@ export interface SuggestedAction {
 }
 
 export interface SuggestedChanges {
-  meta: {
+  meta?: {
     confidence: AIConfidence;
     evidence_sources: string[];
     notes: string;
   };
-  conditional_questions: {
+  conditional_questions?: {
     question: string;
     why_it_matters: string;
     answer_type: 'YesNo' | 'Number' | 'Picklist' | 'Text';

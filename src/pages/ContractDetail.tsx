@@ -8,7 +8,7 @@ import {
   approveChangeOrder, getAuditLog, logAuditEntry, updateLineItemWIP,
   getCompletedLineItemsForDrift,
 } from '@/lib/contractStore';
-import { getEstimateLineItems } from '@/lib/store';
+import { getEstimateLineItems, uid } from '@/lib/store';
 import { recomputeContractWIP, computeCashForecast, computeTradeDrift, driftEntriesToFactors, type TradeDriftEntry } from '@/lib/contractEngine';
 import { computeSubcontractExposure, propagateDelays, hasScheduleCompressionRisk } from '@/lib/phase5Engine';
 import { computeContractDataQuality } from '@/lib/reliabilityEngine';
@@ -17,6 +17,11 @@ import {
   queueExecutionEvent, getLatestAdvisories, triggerIntelligenceProcessing,
   saveSchedulePhase,
 } from '@/lib/phase5Store';
+import {
+  getContractMedia, saveContractMedia, deleteContractMedia,
+  getContractMediaAnalysis, saveContractMediaAnalysis,
+  type ContractMediaItem, type ContractMediaAnalysisItem,
+} from '@/lib/contractMediaStore';
 import type { Subcontract, SchedulePhase, ExecutionEvent } from '@/lib/phase5Types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -28,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText, Brain, Zap, Calendar, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Plus, Shield, TrendingUp, TrendingDown, FileText, Brain, Zap, Calendar, Clock, ImagePlus, Camera, Trash2 } from 'lucide-react';
 import { generateContractPDF } from '@/lib/pdfGenerator';
 import { useToast } from '@/hooks/use-toast';
 
@@ -44,6 +49,11 @@ export default function ContractDetail() {
   const [subcontracts, setSubcontracts] = useState<Subcontract[]>([]);
   const [schedulePhases, setSchedulePhases] = useState<SchedulePhase[]>([]);
   const [advisories, setAdvisories] = useState<ExecutionEvent[]>([]);
+  const [contractMedia, setContractMedia] = useState<ContractMediaItem[]>([]);
+  const [mediaAnalyses, setMediaAnalyses] = useState<Record<string, ContractMediaAnalysisItem>>({});
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaCaption, setMediaCaption] = useState('');
+  const [analyzingMedia, setAnalyzingMedia] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingAI, setProcessingAI] = useState(false);
   const [coModal, setCoModal] = useState(false);
@@ -62,7 +72,7 @@ export default function ContractDetail() {
       const c = await getContract(id);
       if (!c) { navigate('/contracts'); return; }
       setContract(c);
-      const [items, cos, log, completedItems, subs, phases, advs] = await Promise.all([
+      const [items, cos, log, completedItems, subs, phases, advs, cMedia] = await Promise.all([
         getEstimateLineItems(c.estimate_id),
         getChangeOrders(c.id!),
         getAuditLog(c.id!),
@@ -70,6 +80,7 @@ export default function ContractDetail() {
         getSubcontracts(c.id!),
         getSchedulePhases(c.id!),
         getLatestAdvisories(c.id!),
+        getContractMedia(c.id!),
       ]);
       setLineItems(items);
       setChangeOrders(cos);
@@ -78,6 +89,7 @@ export default function ContractDetail() {
       setSubcontracts(subs);
       setSchedulePhases(phases);
       setAdvisories(advs);
+      setContractMedia(cMedia);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [id, navigate]);
@@ -353,6 +365,7 @@ export default function ContractDetail() {
             AI Advisories{advisories.length > 0 ? ` (${advisories.length})` : ''}
             {advisories.length > 0 && <Zap className="h-3 w-3 ml-1 text-primary" />}
           </TabsTrigger>
+          <TabsTrigger value="media">Media ({contractMedia.length})</TabsTrigger>
           <TabsTrigger value="audit">Audit Log</TabsTrigger>
         </TabsList>
 
@@ -766,6 +779,110 @@ export default function ContractDetail() {
                 <p>• Max 5 advisories per contract per 24 hours</p>
                 <p>• AI is advisory only — no financial modifications</p>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Media Tab */}
+        <TabsContent value="media" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Photos & Documents</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Upload */}
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label>Image URL</Label>
+                  <Input value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} placeholder="https://..." />
+                </div>
+                <div className="flex-1">
+                  <Label>Caption</Label>
+                  <Input value={mediaCaption} onChange={e => setMediaCaption(e.target.value)} placeholder="Photo description" />
+                </div>
+                <Button size="sm" onClick={async () => {
+                  if (!contract || !mediaUrl.trim()) return;
+                  await saveContractMedia({
+                    media_id: uid(), contract_id: contract.id!,
+                    file_url: mediaUrl, caption: mediaCaption,
+                    include_in_internal_pdf: true,
+                  });
+                  setMediaUrl(''); setMediaCaption('');
+                  toast({ title: 'Photo added' });
+                  await load();
+                }} disabled={!mediaUrl.trim()}>
+                  <ImagePlus className="h-4 w-4 mr-1" />Add
+                </Button>
+              </div>
+
+              {/* Gallery */}
+              {contractMedia.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No media uploaded yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {contractMedia.map(m => (
+                    <div key={m.id} className="border rounded-lg overflow-hidden">
+                      <img src={m.file_url} alt={m.caption} className="w-full h-32 object-cover" />
+                      <div className="p-2 space-y-1">
+                        <p className="text-xs font-medium truncate">{m.caption || 'No caption'}</p>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="outline" className="text-xs h-7"
+                            disabled={analyzingMedia === m.id}
+                            onClick={async () => {
+                              if (!m.id) return;
+                              setAnalyzingMedia(m.id);
+                              try {
+                                const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+                                  },
+                                  body: JSON.stringify({ action: 'photo_analyze', data: { image_url: m.file_url, caption: m.caption } }),
+                                });
+                                const result = await resp.json();
+                                const content = result.content || '';
+                                let parsed: any = {};
+                                try { const jm = content.match(/```json\s*([\s\S]*?)\s*```/); parsed = jm ? JSON.parse(jm[1]) : JSON.parse(content); } catch {}
+                                const analysis: ContractMediaAnalysisItem = {
+                                  analysis_id: uid(), media_id: m.id!,
+                                  observed_conditions_json: JSON.stringify(parsed.observed_conditions || ''),
+                                  conditional_items_json: JSON.stringify(parsed.suggested_scope_impacts || []),
+                                  allowance_risk_flags_json: JSON.stringify(parsed.risk_flags || []),
+                                  questions_needed_json: JSON.stringify(parsed.questions_needed || []),
+                                  confidence: parsed.ai_confidence || 'Medium',
+                                };
+                                await saveContractMediaAnalysis(analysis);
+                                setMediaAnalyses(prev => ({ ...prev, [m.id!]: analysis }));
+                                toast({ title: 'Photo analyzed' });
+                              } catch (e: any) { toast({ title: 'Analysis error', description: e.message, variant: 'destructive' }); }
+                              finally { setAnalyzingMedia(null); }
+                            }}>
+                            <Camera className="h-3 w-3 mr-1" />{analyzingMedia === m.id ? 'Analyzing...' : 'Analyze'}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-xs h-7 text-destructive"
+                            onClick={async () => { await deleteContractMedia(m.media_id); toast({ title: 'Photo removed' }); await load(); }}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {/* Analysis results */}
+                        {mediaAnalyses[m.id!] && (() => {
+                          const a = mediaAnalyses[m.id!];
+                          let conditions = ''; try { conditions = JSON.parse(a.observed_conditions_json); } catch { conditions = a.observed_conditions_json; }
+                          let risks = ''; try { risks = JSON.parse(a.allowance_risk_flags_json); } catch { risks = a.allowance_risk_flags_json; }
+                          return (
+                            <div className="text-xs space-y-1 mt-1 p-2 bg-muted rounded">
+                              <p><strong>Conditions:</strong> {typeof conditions === 'string' ? conditions : JSON.stringify(conditions)}</p>
+                              <p><strong>Risks:</strong> {typeof risks === 'string' ? risks : JSON.stringify(risks)}</p>
+                              <Badge variant="outline" className="text-xs">{a.confidence}</Badge>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

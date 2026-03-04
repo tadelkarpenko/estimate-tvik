@@ -26,7 +26,7 @@ function mapPhase(crewTrade: string): Phase {
   const map: Record<string, Phase> = {
     Demo: 'Demo', Framing: 'Framing', Drywall: 'Drywall', Paint: 'Paint',
     Flooring: 'Flooring', Electrical: 'Electrical', Plumbing: 'Plumbing',
-    HVAC: 'HVAC', General: 'Other', Exterior: 'Exterior', Roofing: 'Roofing',
+    HVAC: 'HVAC', General: 'Other', Exterior: 'Other', Roofing: 'Other',
   };
   return map[crewTrade] || 'Other';
 }
