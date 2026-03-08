@@ -258,6 +258,104 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     updateArea('quick_tags', newTags.join(', '));
   };
 
+  // ─── Initial Intake Analysis (Patch 3) ───
+  const analyzeInitialIntake = useCallback(async () => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+    if (isApproved) {
+      toast({ title: 'Estimate is approved', description: 'Initial intake is advisory only on approved estimates.', variant: 'destructive' });
+    }
+    const description = initialIntakeDesc.trim() || estimate.internal_notes || '';
+    if (!description) {
+      toast({ title: 'Enter a project description', variant: 'destructive' });
+      return;
+    }
+    setInitialIntakeLoading(true);
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'initial_intake',
+          data: {
+            project_type: estimate.project_type || '',
+            typed_description: description,
+            customer_goal: initialIntakeGoal.trim() || '',
+            urgency: initialIntakeUrgency.trim() || '',
+            existing_status: estimate.status || 'Draft',
+            sqft: estimate.sqft || 0,
+            finish_level: estimate.finish_level || 'Basic',
+            project_address: estimate.project_address || '',
+            notes: estimate.internal_notes || '',
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setInitialIntakeResult(structured);
+
+      // Safe support field updates (not protected content)
+      if (!isApproved) {
+        const supportUpdates: Partial<Estimate> = {
+          ai_intake_summary: structured.summary_of_request || '',
+          likely_scope_items: structured.probable_work_categories?.join(', ') || '',
+          missing_info_questions: structured.next_questions?.map((q: any) => `- ${q.question}`).join('\n') || '',
+          ai_detected_trades: structured.likely_trades?.join(', ') || '',
+          ai_scope_confidence: structured.confidence || 'Medium',
+          intake_last_updated_at: new Date().toISOString(),
+          estimate_site_visit_recommended: structured.site_visit_recommended ?? false,
+        } as any;
+        onUpdate(supportUpdates);
+      }
+
+      // Create queue items if any
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const batchId = crypto.randomUUID();
+        const queueItems = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          source_type: 'text' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'internal_note',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Initial Intake AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || '',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'initial_intake',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: 'Initial Intake',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `initial-${estimateDbId}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(queueItems);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Initial Intake complete', description: `${structured.confidence} confidence` });
+    } catch (e: any) {
+      toast({ title: 'Initial Intake failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setInitialIntakeLoading(false);
+    }
+  }, [estimateDbId, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
+
   // ─── Area-Level AI Analysis ───
   const analyzeArea = useCallback(async () => {
     if (!selectedArea || !estimateDbId) return;
