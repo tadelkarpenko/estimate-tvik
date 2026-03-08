@@ -240,11 +240,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Area CRUD ───
   const addArea = async (areaType: AreaType) => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
-    const newArea = createDefaultArea(estimateDbId, areaType, areas.length);
+    const dbId = await ensureSaved();
+    if (!dbId) return;
+    const newArea = createDefaultArea(dbId, areaType, areas.length);
     try {
       const id = await saveEstimateArea(newArea);
       const updated = await getEstimateAreas(estimateDbId);
