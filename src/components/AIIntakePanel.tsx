@@ -1197,6 +1197,81 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, toast]);
 
+  // ─── Post-Write Health Recheck (Patch 11) ───
+  const runRecheck = useCallback(async () => {
+    if (!estimateDbId) return;
+    setRecheckLoading(true);
+    setRecheckResult(null);
+    try {
+      // Get latest health check for prior state
+      const { data: priorChecks } = await (await import('@/integrations/supabase/client')).supabase
+        .from('estimate_health_checks')
+        .select('*')
+        .eq('estimate_id', estimateDbId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      const prior = priorChecks?.[0];
+
+      // Get line items count
+      const { count } = await (await import('@/integrations/supabase/client')).supabase
+        .from('estimate_line_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('estimate_id', estimateDbId);
+
+      const result = await runPostWriteRecheck({
+        estimate_id: estimateDbId,
+        estimate_version: estimate.version || 'v1.0',
+        current_status: estimate.status || 'Draft',
+        related_execution_id: executionResult?.execution_id || '',
+        related_write_plan_id: writePlan?.write_plan_id || '',
+        current_line_items_count: count || 0,
+        current_exclusions: estimate.suggested_exclusions || '',
+        current_allowances: estimate.suggested_allowances || '',
+        current_assumptions: estimate.suggested_assumptions || '',
+        current_risk_notes: estimate.possible_hidden_risks || '',
+        current_missing_info: estimate.missing_info_questions || '',
+        merged_scope_summary: estimate.merged_scope_summary || '',
+        merged_visible_facts: estimate.merged_visible_facts || '',
+        merged_inferences: estimate.merged_inferences || '',
+        merged_needs_verification: estimate.merged_needs_verification || '',
+        merged_risks: estimate.merged_risks || '',
+        merged_trade_detection: estimate.merged_trade_detection || '',
+        current_confidence: estimate.estimate_confidence_rollup || 'Medium',
+        prior_health_check_id: prior?.id || '',
+        prior_blocking_reason: prior?.blocking_reason || '',
+        prior_completeness_score: Number(prior?.completeness_score || 0),
+        site_visit_required: estimate.site_visit_required || false,
+      });
+      setRecheckResult(result);
+
+      // Sync local estimate state
+      onUpdate({
+        ai_estimate_health_status: result.health_status as any,
+        estimate_site_visit_recommended: result.site_visit_recommended,
+        estimate_confidence_rollup: result.confidence_rollup as any,
+        completeness_score: result.completeness_score,
+        review_blocked: result.block_approval,
+        review_block_reason: result.blocking_reason,
+        override_required: result.human_fix_required,
+      } as any);
+
+      // Refresh suggestions if queue items were created
+      if (result.queue_items_created > 0) {
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({
+        title: `Health: ${result.health_status}`,
+        description: `Score: ${result.completeness_score}%. ${result.resolution_summary}`,
+      });
+    } catch (e: any) {
+      toast({ title: 'Recheck failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setRecheckLoading(false);
+    }
+  }, [estimateDbId, estimate, executionResult, writePlan, onUpdate, toast]);
+
   // ─── Apply Approved Suggestions (legacy) ───
   const applyApprovedSuggestions = async () => {
     if (!estimateDbId) return;
