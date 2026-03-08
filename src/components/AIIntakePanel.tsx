@@ -94,6 +94,22 @@ interface InitialIntakeResult {
 
 export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave, onMediaChange }: AIIntakePanelProps) {
   const { toast } = useToast();
+
+  // Auto-save helper: ensures estimate is persisted before AI actions
+  const ensureSaved = useCallback(async (): Promise<string | null> => {
+    if (estimateDbId) return estimateDbId;
+    try {
+      const dbId = await onSave();
+      if (!dbId) {
+        toast({ title: 'Could not save estimate', description: 'Please try saving manually first.', variant: 'destructive' });
+        return null;
+      }
+      return dbId;
+    } catch (e: any) {
+      toast({ title: 'Auto-save failed', description: e.message, variant: 'destructive' });
+      return null;
+    }
+  }, [estimateDbId, onSave, toast]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('initial');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['summary', 'findings', 'questions']));
