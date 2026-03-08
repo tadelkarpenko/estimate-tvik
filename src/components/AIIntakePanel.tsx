@@ -994,7 +994,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       // Save health check record
       await saveHealthCheck({
         health_check_id: crypto.randomUUID(),
-        estimate_id: estimateDbId,
+        estimate_id: dbId,
         estimate_version: estimate.version || 'v1.0',
         block_source: 'completeness_check',
         warning_level: structured.warning_level || 'Low',
