@@ -15,6 +15,9 @@ import CostAuditPage from "./pages/CostAuditPage";
 import AdminPage from "./pages/AdminPage";
 import ContractsList from "./pages/ContractsList";
 import ContractDetail from "./pages/ContractDetail";
+import JobsList from "./pages/JobsList";
+import JobDetail from "./pages/JobDetail";
+import JobCalendar from "./pages/JobCalendar";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
