@@ -1675,7 +1675,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                 <CardContent className="px-3 pb-3">
                   <div className="flex flex-wrap gap-1.5">
                     {AREA_TYPES.map(type => (
-                      <Button key={type} size="sm" variant="outline" onClick={() => addArea(type)} className="text-xs h-8" disabled={!estimateDbId}>
+                      <Button key={type} size="sm" variant="outline" onClick={() => addArea(type)} className="text-xs h-8">
                         <Home className="h-3 w-3 mr-1" />{type}
                       </Button>
                     ))}
