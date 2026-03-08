@@ -5,7 +5,9 @@ import type {
   Estimate, EstimateStatus, ProjectType, FinishLevel, EstimateLineItem,
   EstimateMedia, EstimateChatThread, EstimateChatMessage, EstimateMediaAnalysis,
   SuggestedChanges, SuggestedAction, AIConfidence, Phase, LineItemUnit,
+  ProjectCategory, ScopeClass, JobComplexity,
 } from '@/lib/types';
+import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, categoryToLegacyType } from '@/lib/types';
 import type { Contract, PaymentMilestone } from '@/lib/contractTypes';
 import { PAYMENT_TEMPLATES } from '@/lib/contractTypes';
 import {
