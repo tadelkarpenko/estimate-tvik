@@ -697,6 +697,182 @@ Reconcile overlaps, surface conflicts, and produce a merged estimate picture. Be
 
       return new Response(JSON.stringify({ structured: mergeStructured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    } else if (action === "missing_info_questions") {
+      // Patch 7: Missing Info Questions block — ranked clarification questions only
+      const missingInfoSystemPrompt = `You are TVIK LLC Missing Info Questions AI — a structured construction estimator clarification tool.
+
+Your job is to look at the current structured intake state and produce ONLY the highest-value clarification questions needed to improve estimate reliability. You are NOT a chatbot. You do NOT ask filler questions.
+
+CRITICAL RULES:
+- You are a STRUCTURED QUESTION RANKER, not a conversational assistant.
+- Ask ONLY questions that materially affect scope, trade involvement, repair-vs-replace decisions, material responsibility, hidden-condition risk, measurement dependence, permit exposure, or site-visit need.
+- Never ask vague questions like "Anything else?" or "Can you tell me more?"
+- Never repeat questions already answered by the structured intake state provided.
+- Ask 3-5 questions maximum. Fewer if the intake is already mostly complete.
+- If intake is sufficiently complete, return zero questions.
+- Never finalize pricing or quantities.
+- Never approve estimates.
+
+QUESTION RANKING ORDER:
+1. Questions that materially change scope
+2. Questions that change trade count or hidden risk
+3. Questions that affect site-visit necessity
+4. Questions that affect finish assumptions
+5. Lower-value questions last
+
+BLOCK_IF_UNANSWERED RULES:
+- Set block_if_unanswered to true ONLY when unanswered questions would materially undermine estimate reliability or later approval safety.
+- Most questions should NOT block — they improve quality but don't prevent work.
+
+SITE VISIT RULES:
+- Recommend site visit when missing information materially affects reliability, especially for: water damage, structural unknowns, multi-trade overlap, measurement-sensitive unresolved scope, partial/conflicting photos, or new revision uncertainty.
+
+Call the extract_missing_info_questions function with the structured output.`;
+
+      const missingInfoUserPrompt = `Analyze the current structured intake state and produce the highest-value clarification questions.
+
+Area: ${data.area_name || 'Unknown'} (${data.area_type || 'Unknown'})
+Project type: ${data.project_type || 'Unknown'}
+Current status: ${data.current_status || 'Draft'}
+Current confidence: ${data.current_confidence || 'Unknown'}
+
+=== MERGED SCOPE SUMMARY ===
+${data.merged_scope_summary || 'Not available'}
+
+=== MERGED VISIBLE FACTS ===
+${data.merged_visible_facts || 'Not available'}
+
+=== MERGED INFERENCES ===
+${data.merged_inferences || 'Not available'}
+
+=== MERGED NEEDS VERIFICATION ===
+${data.merged_needs_verification || 'Not available'}
+
+=== MERGED RISKS ===
+${data.merged_risks || 'Not available'}
+
+=== MERGED TRADE DETECTION ===
+${data.merged_trade_detection || 'Not available'}
+
+=== CURRENT EXCLUSIONS ===
+${data.current_exclusions || 'None'}
+
+=== CURRENT ALLOWANCES ===
+${data.current_allowances || 'None'}
+
+=== CURRENT ASSUMPTIONS ===
+${data.current_assumptions || 'None'}
+
+=== CURRENT RISK NOTES ===
+${data.current_risk_notes || 'None'}
+
+=== ALREADY ASKED QUESTIONS ===
+${data.already_asked_questions || 'None'}
+
+=== CURRENT SITE VISIT RECOMMENDATION ===
+${data.current_site_visit_recommended ? 'Yes' : 'No'}
+
+Produce only the highest-value clarification questions. Do not repeat already-answered items. Be specific and estimator-useful.`;
+
+      const missingInfoToolBody = {
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: missingInfoSystemPrompt },
+          { role: "user", content: missingInfoUserPrompt },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_missing_info_questions",
+              description: "Extract ranked missing info clarification questions from current intake state.",
+              parameters: {
+                type: "object",
+                properties: {
+                  top_priority_questions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        question: { type: "string", description: "The specific clarification question" },
+                        why_it_matters: { type: "string", description: "Why this question materially affects the estimate" },
+                        impact_area: { type: "string", enum: ["scope", "trade", "hidden_risk", "material", "measurement", "permit", "site_visit", "finish"] },
+                        priority_rank: { type: "number", description: "1 = highest priority" },
+                      },
+                      required: ["question", "why_it_matters", "impact_area", "priority_rank"],
+                      additionalProperties: false
+                    },
+                    description: "3-5 highest-value clarification questions, ranked by impact. Fewer if intake is mostly complete."
+                  },
+                  block_if_unanswered: { type: "boolean", description: "True only if unanswered questions materially undermine estimate reliability" },
+                  block_reason: { type: "string", description: "Why unanswered questions would block, if applicable. Empty if block_if_unanswered is false." },
+                  site_visit_recommended: { type: "boolean" },
+                  site_visit_reason: { type: "string", description: "Why site visit is recommended based on missing information. Empty if not recommended." },
+                  overall_completeness_note: { type: "string", description: "1-2 sentence note on current intake completeness level" },
+                  review_queue_items: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        suggestion_type: { type: "string", enum: ["missing_info", "site_visit", "risk_note"] },
+                        suggested_value: { type: "string" },
+                        apply_target: { type: "string" },
+                        confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                        evidence_summary: { type: "string" },
+                        reason_for_suggestion: { type: "string" }
+                      },
+                      required: ["suggestion_type", "suggested_value", "confidence", "evidence_summary", "reason_for_suggestion"],
+                      additionalProperties: false
+                    },
+                    description: "Queue items only for high-value missing info worth tracking. No clutter."
+                  }
+                },
+                required: ["top_priority_questions", "block_if_unanswered", "block_reason", "site_visit_recommended", "site_visit_reason", "overall_completeness_note", "review_queue_items"],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "extract_missing_info_questions" } },
+      };
+
+      const miResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(missingInfoToolBody),
+      });
+
+      if (!miResp.ok) {
+        const status = miResp.status;
+        if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("AI gateway error:", status, await miResp.text());
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const miResult = await miResp.json();
+      const miToolCall = miResult.choices?.[0]?.message?.tool_calls?.[0];
+      let miStructured: any = {};
+      if (miToolCall?.function?.arguments) {
+        try {
+          miStructured = typeof miToolCall.function.arguments === 'string'
+            ? JSON.parse(miToolCall.function.arguments)
+            : miToolCall.function.arguments;
+        } catch {
+          miStructured = { top_priority_questions: [], block_if_unanswered: false, block_reason: "", site_visit_recommended: false, site_visit_reason: "", overall_completeness_note: "Failed to parse", review_queue_items: [] };
+        }
+      } else {
+        const content = miResult.choices?.[0]?.message?.content || "";
+        try { miStructured = JSON.parse(content); } catch {
+          miStructured = { top_priority_questions: [], block_if_unanswered: false, block_reason: "", site_visit_recommended: false, site_visit_reason: "", overall_completeness_note: content || "No analysis", review_queue_items: [] };
+        }
+      }
+
+      return new Response(JSON.stringify({ structured: miStructured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else if (action === "intake") {
       // AI Intake Assistant - structured analysis
       const workflow = data.workflow || "intake_fresh";

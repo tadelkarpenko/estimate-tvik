@@ -116,6 +116,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [photoAnalysisResult, setPhotoAnalysisResult] = useState<any>(null);
   const [mergeAnalysisLoading, setMergeAnalysisLoading] = useState(false);
   const [mergeAnalysisResult, setMergeAnalysisResult] = useState<any>(null);
+  const [missingInfoLoading, setMissingInfoLoading] = useState(false);
+  const [missingInfoResult, setMissingInfoResult] = useState<any>(null);
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
@@ -794,6 +796,117 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [estimateDbId, selectedArea, estimate, isApproved, toast, onUpdate]);
 
+  // ─── Missing Info Questions (Patch 7) ───
+  const generateMissingInfoQuestions = useCallback(async () => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+    if (!selectedArea) {
+      toast({ title: 'Select an area first', variant: 'destructive' });
+      return;
+    }
+    if (isApproved) {
+      toast({ title: 'Estimate is approved', description: 'Missing info is advisory only.', variant: 'destructive' });
+    }
+
+    setMissingInfoLoading(true);
+    const batchId = crypto.randomUUID();
+
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'missing_info_questions',
+          data: {
+            area_name: selectedArea.area_name || '',
+            area_type: selectedArea.area_type || '',
+            project_type: estimate.project_type || '',
+            current_status: estimate.status || 'Draft',
+            current_confidence: selectedArea.merged_confidence || selectedArea.confidence || 'Medium',
+            merged_scope_summary: selectedArea.merged_scope_summary || '',
+            merged_visible_facts: selectedArea.merged_visible_facts || '',
+            merged_inferences: selectedArea.merged_inferences || '',
+            merged_needs_verification: selectedArea.merged_needs_verification || '',
+            merged_risks: selectedArea.merged_risks || '',
+            merged_trade_detection: selectedArea.merged_trade_detection || '',
+            current_exclusions: estimate.suggested_exclusions || '',
+            current_allowances: estimate.suggested_allowances || '',
+            current_assumptions: estimate.suggested_assumptions || '',
+            current_risk_notes: estimate.possible_hidden_risks || '',
+            already_asked_questions: selectedArea.missing_info_questions || '',
+            current_site_visit_recommended: selectedArea.site_visit_flag || false,
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setMissingInfoResult(structured);
+
+      // Update area support fields if not approved
+      if (!isApproved && structured.top_priority_questions?.length > 0) {
+        const questionsText = structured.top_priority_questions
+          .map((q: any, i: number) => `${i + 1}. ${q.question}\n   Why: ${q.why_it_matters}`)
+          .join('\n\n');
+
+        const updatedArea: EstimateArea = {
+          ...selectedArea,
+          missing_info_questions: questionsText,
+          site_visit_flag: structured.site_visit_recommended || selectedArea.site_visit_flag,
+          site_visit_reason: structured.site_visit_reason || selectedArea.site_visit_reason,
+        };
+
+        await saveEstimateArea(updatedArea);
+        setAreas(prev => prev.map(a => a.id === selectedArea.id ? updatedArea : a));
+      }
+
+      // Create queue items
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const newSuggestions = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          area_id: selectedArea.id || null,
+          source_type: 'merged' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'missing_info',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Missing Info Questions AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || 'missing_info_questions',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'missing_info_questions',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: selectedArea.area_name || 'Questions',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `missinginfo-${estimateDbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(newSuggestions);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Missing info questions generated', description: `${structured.top_priority_questions?.length || 0} questions. ${structured.review_queue_items?.length || 0} queued.` });
+    } catch (e: any) {
+      toast({ title: 'Missing info generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setMissingInfoLoading(false);
+    }
+  }, [estimateDbId, selectedArea, estimate, isApproved, toast]);
+
   // ─── Send Suggestions to Queue ───
   const sendSuggestionsToQueue = async () => {
     if (!areaFindings || !estimateDbId || !selectedArea) {
@@ -1040,14 +1153,15 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-4 mt-2 grid grid-cols-7 h-8">
-          <TabsTrigger value="initial" className="text-xs">Intake</TabsTrigger>
-          <TabsTrigger value="areas" className="text-xs">Areas</TabsTrigger>
-          <TabsTrigger value="capture" className="text-xs">Capture</TabsTrigger>
-          <TabsTrigger value="photos" className="text-xs">Photos</TabsTrigger>
-          <TabsTrigger value="merge" className="text-xs">Merge</TabsTrigger>
-          <TabsTrigger value="queue" className="text-xs">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
-          <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
+        <TabsList className="mx-4 mt-2 grid grid-cols-8 h-8">
+          <TabsTrigger value="initial" className="text-[10px] px-1">Intake</TabsTrigger>
+          <TabsTrigger value="areas" className="text-[10px] px-1">Areas</TabsTrigger>
+          <TabsTrigger value="capture" className="text-[10px] px-1">Capture</TabsTrigger>
+          <TabsTrigger value="photos" className="text-[10px] px-1">Photos</TabsTrigger>
+          <TabsTrigger value="merge" className="text-[10px] px-1">Merge</TabsTrigger>
+          <TabsTrigger value="questions" className="text-[10px] px-1">Questions</TabsTrigger>
+          <TabsTrigger value="queue" className="text-[10px] px-1">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
+          <TabsTrigger value="summary" className="text-[10px] px-1">Summary</TabsTrigger>
         </TabsList>
 
         {/* ═══ INITIAL INTAKE TAB (Patch 3) ═══ */}
@@ -2013,6 +2127,128 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                         <span className="truncate">{item.suggested_value || item.reason_for_suggestion}</span>
                       </div>
                     ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ═══ QUESTIONS TAB (Patch 7) ═══ */}
+        <TabsContent value="questions" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {/* Current state summary */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Confidence: </span>
+                <Badge variant={
+                  (selectedArea?.merged_confidence || selectedArea?.confidence) === 'High' ? 'default' :
+                  (selectedArea?.merged_confidence || selectedArea?.confidence) === 'Low' ? 'destructive' : 'secondary'
+                } className="text-[10px]">
+                  {selectedArea?.merged_confidence || selectedArea?.confidence || 'Unknown'}
+                </Badge>
+                {selectedArea?.site_visit_flag && (
+                  <Badge variant="destructive" className="text-[10px]"><MapPin className="h-2.5 w-2.5 mr-0.5" /> Site Visit</Badge>
+                )}
+              </div>
+
+              {/* Action */}
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={missingInfoLoading || !selectedArea}
+                onClick={generateMissingInfoQuestions}
+              >
+                {missingInfoLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Generating…</> : <><HelpCircle className="h-3.5 w-3.5 mr-1.5" /> Generate Missing Info Questions</>}
+              </Button>
+
+              {/* Results */}
+              {missingInfoResult && (
+                <div className="space-y-3">
+                  {/* Completeness note */}
+                  {missingInfoResult.overall_completeness_note && (
+                    <Card>
+                      <CardContent className="px-3 py-2">
+                        <p className="text-xs text-muted-foreground">{missingInfoResult.overall_completeness_note}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Block warning */}
+                  {missingInfoResult.block_if_unanswered && (
+                    <Card className="border-red-500/50 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><AlertTriangle className="h-3.5 w-3.5" /> Blocks Approval If Unanswered</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs">{missingInfoResult.block_reason}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Questions list */}
+                  {missingInfoResult.top_priority_questions?.length > 0 ? (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5" /> Top Priority Questions ({missingInfoResult.top_priority_questions.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-3">
+                        {missingInfoResult.top_priority_questions.map((q: any, i: number) => (
+                          <div key={i} className="border-l-2 border-primary/30 pl-2.5 space-y-0.5">
+                            <p className="text-xs font-medium">{q.priority_rank}. {q.question}</p>
+                            <p className="text-[10px] text-muted-foreground">{q.why_it_matters}</p>
+                            <Badge variant="outline" className="text-[9px]">{q.impact_area}</Badge>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardContent className="px-3 py-3">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5 text-green-600" /> No high-priority questions remain. Intake appears sufficiently complete.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Site visit recommendation */}
+                  {missingInfoResult.site_visit_recommended && (
+                    <Card className="border-red-500/50 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><MapPin className="h-3.5 w-3.5" /> Site Visit Recommended</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs">{missingInfoResult.site_visit_reason || 'Missing information materially affects estimate reliability.'}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Queue preview */}
+                  {missingInfoResult.review_queue_items?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs">Queued Suggestions ({missingInfoResult.review_queue_items.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-1">
+                        {missingInfoResult.review_queue_items.slice(0, 5).map((item: any, i: number) => (
+                          <div key={i} className="text-xs flex items-center gap-1.5">
+                            <Badge variant="outline" className="text-[9px]">{item.suggestion_type}</Badge>
+                            <span className="truncate">{item.suggested_value || item.reason_for_suggestion}</span>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Show existing questions if no fresh result */}
+              {!missingInfoResult && selectedArea?.missing_info_questions && (
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5" /> Previous Questions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3">
+                    <FindingSection content={selectedArea.missing_info_questions} />
                   </CardContent>
                 </Card>
               )}
