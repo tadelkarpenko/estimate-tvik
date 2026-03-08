@@ -909,8 +909,8 @@ export default function NewEstimate() {
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={saveDraft}>Save Draft</Button>
         <Button onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
-        <Button variant="outline" onClick={() => setIntakeOpen(true)} className="border-primary/30">
-          <ClipboardList className="mr-1 h-4 w-4" />AI Intake Assistant
+        <Button variant="outline" onClick={() => setMobileAiOpen(!mobileAiOpen)} className="border-primary/30 lg:hidden">
+          <ClipboardList className="mr-1 h-4 w-4" />{mobileAiOpen ? 'Hide AI' : 'AI Intake'}
         </Button>
         {form.subtotal! > 0 && (
           <>
