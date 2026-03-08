@@ -1138,6 +1138,7 @@ export type Database = {
           intake_last_updated_at: string | null
           internal_notes: string
           internal_pdf_url: string
+          job_complexity: string
           labor_hours: number
           labor_subtotal: number
           last_revision_summary: string
@@ -1153,6 +1154,7 @@ export type Database = {
           possible_hidden_risks: string
           profit_pct: number
           project_address: string
+          project_category: string
           project_name: string
           project_type: string
           public_notes: string
@@ -1161,6 +1163,7 @@ export type Database = {
           risk_cost_high: number
           risk_cost_low: number
           risk_table_json: string
+          scope_class: string
           site_visit_required: boolean
           sqft: number
           state: string
@@ -1228,6 +1231,7 @@ export type Database = {
           intake_last_updated_at?: string | null
           internal_notes?: string
           internal_pdf_url?: string
+          job_complexity?: string
           labor_hours?: number
           labor_subtotal?: number
           last_revision_summary?: string
@@ -1243,6 +1247,7 @@ export type Database = {
           possible_hidden_risks?: string
           profit_pct?: number
           project_address?: string
+          project_category?: string
           project_name?: string
           project_type?: string
           public_notes?: string
@@ -1251,6 +1256,7 @@ export type Database = {
           risk_cost_high?: number
           risk_cost_low?: number
           risk_table_json?: string
+          scope_class?: string
           site_visit_required?: boolean
           sqft?: number
           state?: string
@@ -1318,6 +1324,7 @@ export type Database = {
           intake_last_updated_at?: string | null
           internal_notes?: string
           internal_pdf_url?: string
+          job_complexity?: string
           labor_hours?: number
           labor_subtotal?: number
           last_revision_summary?: string
@@ -1333,6 +1340,7 @@ export type Database = {
           possible_hidden_risks?: string
           profit_pct?: number
           project_address?: string
+          project_category?: string
           project_name?: string
           project_type?: string
           public_notes?: string
@@ -1341,6 +1349,7 @@ export type Database = {
           risk_cost_high?: number
           risk_cost_low?: number
           risk_table_json?: string
+          scope_class?: string
           site_visit_required?: boolean
           sqft?: number
           state?: string

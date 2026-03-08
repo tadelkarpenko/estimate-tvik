@@ -5,7 +5,9 @@ import type {
   Estimate, EstimateStatus, ProjectType, FinishLevel, EstimateLineItem,
   EstimateMedia, EstimateChatThread, EstimateChatMessage, EstimateMediaAnalysis,
   SuggestedChanges, SuggestedAction, AIConfidence, Phase, LineItemUnit,
+  ProjectCategory, ScopeClass, JobComplexity,
 } from '@/lib/types';
+import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, categoryToLegacyType } from '@/lib/types';
 import type { Contract, PaymentMilestone } from '@/lib/contractTypes';
 import { PAYMENT_TEMPLATES } from '@/lib/contractTypes';
 import {
@@ -48,6 +50,7 @@ import { AIIntakePanel } from '@/components/AIIntakePanel';
 
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
+  project_category: 'Full Renovation', scope_class: 'Full-Scope Multi-Trade', job_complexity: 'Standard Scope',
   finish_level: 'Basic', finish_materials_included: false, overhead_pct: 0.10,
   profit_pct: 0.20, contingency_pct: 0.10, sqft: 0, fixture_count: 0, labor_hours: 0, version: 'v1.0',
   client_name: '', client_email: '', client_phone: '', project_address: '', city: '', zip: '',
@@ -172,16 +175,23 @@ export default function NewEstimate() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
-  const update = (updates: Partial<Estimate>) => setForm(prev => ({ ...prev, ...updates }));
+  const update = (updates: Partial<Estimate>) => {
+    // Auto-sync legacy project_type when project_category changes
+    if (updates.project_category) {
+      updates.project_type = categoryToLegacyType(updates.project_category as ProjectCategory);
+    }
+    setForm(prev => ({ ...prev, ...updates }));
+  };
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!form.project_type) errs.project_type = 'Project type required';
-    if (form.project_type !== 'Small Job' && (!form.sqft || form.sqft <= 0)) errs.sqft = 'Square footage required';
-    if ((form.project_type === 'Bath' || form.project_type === 'Kitchen') && (!form.fixture_count || form.fixture_count <= 0))
+    if (!form.project_category) errs.project_category = 'Project category required';
+    const legacyType = categoryToLegacyType(form.project_category as ProjectCategory || 'Custom Scope');
+    if (legacyType !== 'Small Job' && (!form.sqft || form.sqft <= 0)) errs.sqft = 'Square footage required';
+    if ((legacyType === 'Bath' || legacyType === 'Kitchen') && (!form.fixture_count || form.fixture_count <= 0))
       errs.fixture_count = 'Fixture count required';
-    if (form.project_type === 'Small Job' && (!form.labor_hours || form.labor_hours <= 0))
-      errs.labor_hours = 'Labor hours required for Small Jobs';
+    if (form.job_complexity === 'Quick Repair' && (!form.labor_hours || form.labor_hours <= 0))
+      errs.labor_hours = 'Labor hours required for Quick Repair jobs';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -752,22 +762,42 @@ export default function NewEstimate() {
       {/* Form Fields */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader><CardTitle className="text-base">Project Details</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+          <CardHeader><CardTitle className="text-base">Project Classification</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label className="font-semibold">Project Category *</Label>
+              <p className="text-xs text-muted-foreground mb-1">High-level project type</p>
+              <Select value={form.project_category || 'Custom Scope'} onValueChange={v => update({ project_category: v as ProjectCategory })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PROJECT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {errors.project_category && <p className="text-xs text-destructive mt-1">{errors.project_category}</p>}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Project Type *</Label>
-                <Select value={form.project_type} onValueChange={v => update({ project_type: v as ProjectType })}>
+                <Label className="font-semibold">Scope Class</Label>
+                <p className="text-xs text-muted-foreground mb-1">Internal estimating logic</p>
+                <Select value={form.scope_class || 'Full-Scope Multi-Trade'} onValueChange={v => update({ scope_class: v as ScopeClass })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Bath">Bath</SelectItem>
-                    <SelectItem value="Full Rehab">Full Rehab</SelectItem>
-                    <SelectItem value="Kitchen">Kitchen</SelectItem>
-                    <SelectItem value="Small Job">Small Job</SelectItem>
+                    {SCOPE_CLASSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                {errors.project_type && <p className="text-xs text-destructive mt-1">{errors.project_type}</p>}
               </div>
+              <div>
+                <Label className="font-semibold">Job Size / Complexity</Label>
+                <p className="text-xs text-muted-foreground mb-1">Expected scope scale</p>
+                <Select value={form.job_complexity || 'Standard Scope'} onValueChange={v => update({ job_complexity: v as JobComplexity })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {JOB_COMPLEXITIES.map(j => <SelectItem key={j} value={j}>{j}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Finish Level</Label>
                 <Select value={form.finish_level} onValueChange={v => update({ finish_level: v as FinishLevel })}>
@@ -775,6 +805,7 @@ export default function NewEstimate() {
                   <SelectContent><SelectItem value="Basic">Basic</SelectItem><SelectItem value="Mid">Mid</SelectItem><SelectItem value="High">High</SelectItem><SelectItem value="Luxury">Luxury</SelectItem></SelectContent>
                 </Select>
               </div>
+              <div><Label>Project Name</Label><Input value={form.project_name || ''} onChange={e => update({ project_name: e.target.value })} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {form.project_type !== 'Small Job' && (
@@ -791,7 +822,7 @@ export default function NewEstimate() {
                   {errors.fixture_count && <p className="text-xs text-destructive mt-1">{errors.fixture_count}</p>}
                 </div>
               )}
-              {form.project_type === 'Small Job' && (
+              {form.job_complexity === 'Quick Repair' && (
                 <div>
                   <Label>Labor Hours *</Label>
                   <Input type="number" value={form.labor_hours || ''} onChange={e => update({ labor_hours: Number(e.target.value) })} />
@@ -807,7 +838,6 @@ export default function NewEstimate() {
               <Switch checked={form.finish_materials_included} onCheckedChange={v => update({ finish_materials_included: v })} />
               <Label>Finish Materials Included</Label>
             </div>
-            <div><Label>Project Name</Label><Input value={form.project_name || ''} onChange={e => update({ project_name: e.target.value })} /></div>
           </CardContent>
         </Card>
 

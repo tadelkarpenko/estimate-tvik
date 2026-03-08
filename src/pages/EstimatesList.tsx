@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getEstimates, deleteEstimate, saveEstimate, nextEstimateId } from '@/lib/store';
 import type { Estimate } from '@/lib/types';
+import { PROJECT_CATEGORIES } from '@/lib/types';
 import { generatePublicPDF, generateInternalPDF } from '@/lib/pdfGenerator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +32,7 @@ export default function EstimatesList() {
 
   const filtered = estimates
     .filter(e => !search || `${e.estimate_id} ${e.project_name} ${e.client_name} ${e.city}`.toLowerCase().includes(search.toLowerCase()))
-    .filter(e => typeFilter === 'all' || e.project_type === typeFilter)
+    .filter(e => typeFilter === 'all' || e.project_category === typeFilter || e.project_type === typeFilter)
     .filter(e => statusFilter === 'all' || e.status === statusFilter)
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
@@ -62,8 +63,11 @@ export default function EstimatesList() {
       <div className="flex gap-2 flex-wrap">
         <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="w-full sm:max-w-xs" />
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Type" /></SelectTrigger>
-          <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem><SelectItem value="Kitchen">Kitchen</SelectItem><SelectItem value="Small Job">Small Job</SelectItem></SelectContent>
+          <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Categories</SelectItem>
+            {PROJECT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -84,7 +88,7 @@ export default function EstimatesList() {
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <Badge variant={e.status === 'Accepted' ? 'default' : 'secondary'} className="text-xs">{e.status}</Badge>
-                  <Badge variant="secondary" className="text-xs">{e.project_type}</Badge>
+                  <Badge variant="secondary" className="text-xs">{e.project_category || e.project_type}</Badge>
                 </div>
               </div>
               <div className="flex gap-1 mt-2" onClick={ev => ev.stopPropagation()}>
@@ -104,7 +108,7 @@ export default function EstimatesList() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead><TableHead>Project</TableHead><TableHead>Client</TableHead><TableHead>Type</TableHead>
+                <TableHead>ID</TableHead><TableHead>Project</TableHead><TableHead>Client</TableHead><TableHead>Category</TableHead>
                 <TableHead>City</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Range</TableHead><TableHead>Updated</TableHead><TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -114,7 +118,7 @@ export default function EstimatesList() {
                   <TableCell className="font-mono text-sm">{e.estimate_id}</TableCell>
                   <TableCell className="font-medium">{e.project_name || '—'}</TableCell>
                   <TableCell>{e.client_name || '—'}</TableCell>
-                  <TableCell><Badge variant="secondary">{e.project_type}</Badge></TableCell>
+                  <TableCell><Badge variant="secondary">{e.project_category || e.project_type}</Badge></TableCell>
                   <TableCell>{e.city}</TableCell>
                   <TableCell><Badge variant={e.status === 'Accepted' ? 'default' : 'secondary'}>{e.status}</Badge></TableCell>
                   <TableCell className="text-right text-sm">{e.total_low > 0 ? `${fmt(e.total_low)}–${fmt(e.total_high)}` : '—'}</TableCell>

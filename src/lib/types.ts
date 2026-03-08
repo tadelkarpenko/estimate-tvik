@@ -1,6 +1,52 @@
 export type ProjectType = 'Bath' | 'Full Rehab' | 'Kitchen' | 'Small Job';
 export type EstimateStatus = 'Draft' | 'Ready' | 'Sent' | 'Accepted' | 'Rejected';
 export type FinishLevel = 'Basic' | 'Mid' | 'High' | 'Luxury';
+
+// ─── New 3-field Project Classification ───
+export type ProjectCategory =
+  | 'Full Renovation' | 'Kitchen Renovation' | 'Bathroom Renovation'
+  | 'Basement / Lower Level Finish' | 'Interior Refresh' | 'Exterior Renovation'
+  | 'Roofing / Siding / Gutters' | 'Windows / Doors' | 'Structural / Framing'
+  | 'Plumbing Scope' | 'Electrical Scope' | 'HVAC Scope'
+  | 'Water / Moisture / Damage Repair' | 'Punch List / Repair Scope' | 'Custom Scope';
+
+export const PROJECT_CATEGORIES: ProjectCategory[] = [
+  'Full Renovation', 'Kitchen Renovation', 'Bathroom Renovation',
+  'Basement / Lower Level Finish', 'Interior Refresh', 'Exterior Renovation',
+  'Roofing / Siding / Gutters', 'Windows / Doors', 'Structural / Framing',
+  'Plumbing Scope', 'Electrical Scope', 'HVAC Scope',
+  'Water / Moisture / Damage Repair', 'Punch List / Repair Scope', 'Custom Scope',
+];
+
+export type ScopeClass =
+  | 'Full-Scope Multi-Trade' | 'Single-Room Remodel' | 'Multi-Room Remodel'
+  | 'Single-Trade Scope' | 'Repair / Correction' | 'Replacement / Install'
+  | 'Finish Upgrade' | 'Diagnostic / Site Visit' | 'Insurance / Damage Scope'
+  | 'Punch List / Closeout';
+
+export const SCOPE_CLASSES: ScopeClass[] = [
+  'Full-Scope Multi-Trade', 'Single-Room Remodel', 'Multi-Room Remodel',
+  'Single-Trade Scope', 'Repair / Correction', 'Replacement / Install',
+  'Finish Upgrade', 'Diagnostic / Site Visit', 'Insurance / Damage Scope',
+  'Punch List / Closeout',
+];
+
+export type JobComplexity = 'Quick Repair' | 'Minor Scope' | 'Standard Scope' | 'Complex Scope' | 'Full Project';
+
+export const JOB_COMPLEXITIES: JobComplexity[] = [
+  'Quick Repair', 'Minor Scope', 'Standard Scope', 'Complex Scope', 'Full Project',
+];
+
+/** Map new ProjectCategory to legacy ProjectType for cost engine / risk engine backward compat */
+export function categoryToLegacyType(cat: ProjectCategory): ProjectType {
+  switch (cat) {
+    case 'Bathroom Renovation': return 'Bath';
+    case 'Kitchen Renovation': return 'Kitchen';
+    case 'Full Renovation': return 'Full Rehab';
+    case 'Punch List / Repair Scope': return 'Small Job';
+    default: return 'Full Rehab';
+  }
+}
 export type QtyRule = 'sqft' | 'fixture' | 'lump_sum' | 'each' | 'lf' | 'hour';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
 export type AuditStatus = 'Open' | 'Accepted' | 'Ignored';
@@ -45,6 +91,10 @@ export interface Estimate {
   zip: string;
   project_name: string;
   project_type: ProjectType;
+  // New 3-field classification
+  project_category: ProjectCategory;
+  scope_class: ScopeClass;
+  job_complexity: JobComplexity;
   sqft: number;
   fixture_count: number;
   labor_hours: number;

@@ -25,7 +25,7 @@ const REQUIRED_SCOPE_ITEMS: Record<ProjectType, string[]> = {
     'Paint', 'Countertops', 'Cabinetry',
   ],
   'Small Job': [
-    'Labor', 'Materials',
+    'Labor',
   ],
 };
 
@@ -89,9 +89,12 @@ export function evaluateApprovalGate(
   if (calcStatus !== 'Fresh') reasons.push('Estimate not generated yet (calc_status = Stale)');
 
   // 2. Required fields
+  const legacyType = est.project_type || 'Full Rehab';
   const requiredFieldsComplete = !!(
-    est.project_type && est.client_name && est.project_name &&
-    (est.project_type === 'Small Job' ? (est.labor_hours && est.labor_hours > 0) : (est.sqft && est.sqft > 0))
+    est.client_name && est.project_name &&
+    (legacyType === 'Small Job' || (est.job_complexity as any) === 'Quick Repair'
+      ? (est.labor_hours && est.labor_hours > 0)
+      : (est.sqft && est.sqft > 0))
   );
   if (!requiredFieldsComplete) reasons.push('Required fields incomplete (client name, project name, sqft/hours)');
 
