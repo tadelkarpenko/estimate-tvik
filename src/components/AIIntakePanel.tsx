@@ -29,6 +29,7 @@ import {
   type EstimateArea, type AreaType, type EstimateRollup,
 } from '@/lib/areaStore';
 import { saveHealthCheck } from '@/lib/healthCheckStore';
+import { generateWritePlan, saveWritePlan, updateWritePlanStatus, type WritePlan, type WritePlanFieldUpdate, type WritePlanLineItem, type WritePlanAuditEntry } from '@/lib/writePlanStore';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
@@ -122,6 +123,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [completenessLoading, setCompletenessLoading] = useState(false);
   const [completenessResult, setCompletenessResult] = useState<any>(null);
   const [overrideReason, setOverrideReason] = useState('');
+  const [writePlan, setWritePlan] = useState<WritePlan | null>(null);
+  const [writePlanLoading, setWritePlanLoading] = useState(false);
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
@@ -1123,7 +1126,108 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   };
 
-  // ─── Apply Approved Suggestions ───
+  // ─── Generate Write Plan (Patch 9) ───
+  const generateAndStageWritePlan = useCallback(async () => {
+    if (!estimateDbId) return;
+    const approvable = suggestions.filter(s => s.status === 'approved' || s.status === 'edited');
+    if (approvable.length === 0) {
+      setWritePlan(null);
+      toast({ title: 'No approved items', description: 'Approve suggestions in the Queue tab first.', variant: 'destructive' });
+      return;
+    }
+    setWritePlanLoading(true);
+    try {
+      const plan = generateWritePlan(approvable, estimate, estimateDbId);
+      await saveWritePlan(plan);
+      setWritePlan(plan as WritePlan);
+      toast({ title: 'Write plan staged', description: plan.summary });
+    } catch (e: any) {
+      toast({ title: 'Write plan failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setWritePlanLoading(false);
+    }
+  }, [estimateDbId, suggestions, estimate, toast]);
+
+  // ─── Execute Write Plan (Patch 9) ───
+  const executeWritePlan = useCallback(async () => {
+    if (!writePlan || !estimateDbId) return;
+    setWritePlanLoading(true);
+    try {
+      const fieldsToUpdate: WritePlanFieldUpdate[] = JSON.parse(writePlan.fields_to_update || '[]');
+      const auditEntries: WritePlanAuditEntry[] = JSON.parse(writePlan.audit_entries_to_create || '[]');
+
+      // Build estimate updates from field plan
+      const updates: Partial<Estimate> = {};
+      for (const f of fieldsToUpdate) {
+        if (f.action === 'append') {
+          const existing = (estimate as any)[f.field] || '';
+          (updates as any)[f.field] = existing ? `${existing}\n• ${f.value}` : `• ${f.value}`;
+        } else if (f.action === 'set') {
+          if (f.field === 'site_visit_required') {
+            updates.site_visit_required = f.value === 'true';
+          } else {
+            (updates as any)[f.field] = f.value;
+          }
+        }
+      }
+
+      // Reapproval: downgrade status if needed
+      if (writePlan.requires_reapproval && (['Approved', 'Sent'] as string[]).includes(estimate.status || '')) {
+        updates.status = 'Ready for Review' as any;
+      }
+
+      updates.ai_apply_status = 'Applied' as any;
+      onUpdate(updates);
+
+      // Mark all approved suggestions as applied
+      const approvable = suggestions.filter(s => s.status === 'approved' || s.status === 'edited');
+      for (const s of approvable) {
+        await updateSuggestionStatus(s.id, 'applied', { approved_by: 'TVIK' });
+      }
+
+      // Create audit records
+      if (auditEntries.length > 0) {
+        const auditRows = auditEntries.map(a => ({
+          audit_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          suggestion_id: a.suggestion_id,
+          original_suggestion: a.original_suggestion,
+          final_applied_value: a.final_applied_value,
+          applied_field: a.applied_field,
+          confidence: a.confidence,
+          approved_by: a.approved_by,
+          approved_at: new Date().toISOString(),
+          source_type: a.source_type,
+          area_id: a.area_id || null,
+          suggestion_batch_id: a.suggestion_batch_id || '',
+          apply_run_id: writePlan.apply_run_id,
+          estimate_version: writePlan.estimate_version,
+        }));
+        await insertAppliedAudit(auditRows);
+      }
+
+      // Update write plan status
+      if (writePlan.id) {
+        await updateWritePlanStatus(writePlan.id, 'applied');
+      }
+
+      await onSave();
+      const updatedSuggestions = await getSuggestions(estimateDbId);
+      setSuggestions(updatedSuggestions);
+      setWritePlan({ ...writePlan, apply_status: 'applied' as any });
+
+      toast({ title: 'Write plan applied', description: `${auditEntries.length} changes applied. ${writePlan.requires_reapproval ? 'Estimate moved to Ready for Review.' : ''}` });
+    } catch (e: any) {
+      if (writePlan.id) {
+        await updateWritePlanStatus(writePlan.id, 'failed').catch(() => {});
+      }
+      toast({ title: 'Apply failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setWritePlanLoading(false);
+    }
+  }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, onSave, toast]);
+
+  // ─── Apply Approved Suggestions (legacy) ───
   const applyApprovedSuggestions = async () => {
     if (!estimateDbId) return;
     const approvable = filteredSuggestions.filter(s => s.status === 'approved' || s.status === 'edited');
@@ -1288,16 +1392,17 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-4 mt-2 grid grid-cols-9 h-8">
-          <TabsTrigger value="initial" className="text-[10px] px-1">Intake</TabsTrigger>
-          <TabsTrigger value="areas" className="text-[10px] px-1">Areas</TabsTrigger>
-          <TabsTrigger value="capture" className="text-[10px] px-1">Capture</TabsTrigger>
-          <TabsTrigger value="photos" className="text-[10px] px-1">Photos</TabsTrigger>
-          <TabsTrigger value="merge" className="text-[10px] px-1">Merge</TabsTrigger>
-          <TabsTrigger value="questions" className="text-[10px] px-1">Questions</TabsTrigger>
-          <TabsTrigger value="check" className="text-[10px] px-1">Check</TabsTrigger>
-          <TabsTrigger value="queue" className="text-[10px] px-1">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
-          <TabsTrigger value="summary" className="text-[10px] px-1">Summary</TabsTrigger>
+        <TabsList className="mx-4 mt-2 grid grid-cols-10 h-8">
+          <TabsTrigger value="initial" className="text-[10px] px-0.5">Intake</TabsTrigger>
+          <TabsTrigger value="areas" className="text-[10px] px-0.5">Areas</TabsTrigger>
+          <TabsTrigger value="capture" className="text-[10px] px-0.5">Capture</TabsTrigger>
+          <TabsTrigger value="photos" className="text-[10px] px-0.5">Photos</TabsTrigger>
+          <TabsTrigger value="merge" className="text-[10px] px-0.5">Merge</TabsTrigger>
+          <TabsTrigger value="questions" className="text-[10px] px-0.5">Questions</TabsTrigger>
+          <TabsTrigger value="check" className="text-[10px] px-0.5">Check</TabsTrigger>
+          <TabsTrigger value="queue" className="text-[10px] px-0.5">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
+          <TabsTrigger value="apply" className="text-[10px] px-0.5">Apply {approvedCount > 0 && `(${approvedCount})`}</TabsTrigger>
+          <TabsTrigger value="summary" className="text-[10px] px-0.5">Summary</TabsTrigger>
         </TabsList>
 
         {/* ═══ INITIAL INTAKE TAB (Patch 3) ═══ */}
@@ -2682,6 +2787,167 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ═══ APPLY TAB (Patch 9) ═══ */}
+        <TabsContent value="apply" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {/* Status bar */}
+              <Card>
+                <CardContent className="px-3 py-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Status: <strong>{estimate.status || 'Draft'}</strong></span>
+                    <span className="text-muted-foreground">Version: <strong>{estimate.version || 'v1.0'}</strong></span>
+                    <span className="text-muted-foreground">Approved: <strong>{approvedCount}</strong></span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Generate button */}
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={writePlanLoading || approvedCount === 0}
+                onClick={generateAndStageWritePlan}
+              >
+                {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Generating…</> : <><ClipboardList className="h-3.5 w-3.5 mr-1.5" /> Generate Write Plan ({approvedCount} approved)</>}
+              </Button>
+
+              {approvedCount === 0 && (
+                <Card><CardContent className="px-3 py-3"><p className="text-xs text-muted-foreground">Approve suggestions in the Queue tab first. Only approved items are included in the write plan.</p></CardContent></Card>
+              )}
+
+              {/* Write Plan Preview */}
+              {writePlan && (() => {
+                const fields: WritePlanFieldUpdate[] = JSON.parse(writePlan.fields_to_update || '[]');
+                const lineItems: WritePlanLineItem[] = JSON.parse(writePlan.line_items_to_add_or_edit || '[]');
+                const exclusions: string[] = JSON.parse(writePlan.exclusions_to_append || '[]');
+                const allowances: string[] = JSON.parse(writePlan.allowances_to_append || '[]');
+                const assumptions: string[] = JSON.parse(writePlan.assumptions_to_append || '[]');
+                const riskNotes: string[] = JSON.parse(writePlan.risk_notes_to_append || '[]');
+                const audits: WritePlanAuditEntry[] = JSON.parse(writePlan.audit_entries_to_create || '[]');
+
+                return (
+                  <div className="space-y-3">
+                    {/* Summary */}
+                    <Card>
+                      <CardContent className="px-3 py-2">
+                        <p className="text-xs">{writePlan.summary}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge variant={writePlan.apply_status === 'applied' ? 'default' : writePlan.apply_status === 'failed' ? 'destructive' : 'secondary'} className="text-[10px]">
+                            {writePlan.apply_status}
+                          </Badge>
+                          {writePlan.requires_reapproval && (
+                            <Badge variant="destructive" className="text-[10px]">Requires Reapproval</Badge>
+                          )}
+                          {!writePlan.requires_reapproval && (
+                            <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700">No Reapproval</Badge>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Fields to update */}
+                    {fields.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs">Fields To Update ({fields.length})</CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1.5">
+                          {fields.map((f, i) => (
+                            <div key={i} className="border-l-2 border-primary/30 pl-2.5 text-xs">
+                              <span className="font-medium">{f.field}</span>
+                              <Badge variant="outline" className="text-[9px] ml-1">{f.action}</Badge>
+                              <p className="text-muted-foreground truncate">{f.value}</p>
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Line items */}
+                    {lineItems.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs">Line Items To Add ({lineItems.length})</CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1.5">
+                          {lineItems.map((li, i) => (
+                            <div key={i} className="border-l-2 border-primary/30 pl-2.5 text-xs">
+                              <Badge variant="outline" className="text-[9px]">{li.action}</Badge>
+                              <span className="ml-1 font-medium">{li.description}</span>
+                              {li.phase && <span className="text-muted-foreground ml-1">({li.phase})</span>}
+                              {li.qty != null && <span className="text-muted-foreground ml-1">qty: {li.qty}</span>}
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Append sections */}
+                    {exclusions.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Exclusions To Append ({exclusions.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{exclusions.map((e, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {e}</p>)}</CardContent>
+                      </Card>
+                    )}
+                    {allowances.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Allowances To Append ({allowances.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{allowances.map((a, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {a}</p>)}</CardContent>
+                      </Card>
+                    )}
+                    {assumptions.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Assumptions To Append ({assumptions.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{assumptions.map((a, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {a}</p>)}</CardContent>
+                      </Card>
+                    )}
+                    {riskNotes.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Risk Notes To Append ({riskNotes.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{riskNotes.map((r, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {r}</p>)}</CardContent>
+                      </Card>
+                    )}
+
+                    {/* Audit preview */}
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs">Audit Entries ({audits.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs text-muted-foreground">{audits.length} audit records will be created to trace each applied suggestion.</p>
+                      </CardContent>
+                    </Card>
+
+                    {/* Execute button */}
+                    {writePlan.apply_status === 'staged' && (
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        variant="gold"
+                        disabled={writePlanLoading}
+                        onClick={executeWritePlan}
+                      >
+                        {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Applying…</> : <><CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Execute Write Plan</>}
+                      </Button>
+                    )}
+
+                    {writePlan.apply_status === 'applied' && (
+                      <Card className="border-emerald-300 bg-emerald-50">
+                        <CardContent className="px-3 py-3">
+                          <p className="text-xs flex items-center gap-1.5 text-emerald-800">
+                            <CheckCircle className="h-3.5 w-3.5" /> Write plan applied successfully. {audits.length} audit entries created.
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </ScrollArea>
         </TabsContent>

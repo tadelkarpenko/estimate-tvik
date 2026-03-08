@@ -1281,6 +1281,80 @@ export type Database = {
           },
         ]
       }
+      estimate_write_plans: {
+        Row: {
+          allowances_to_append: string
+          apply_run_id: string
+          apply_status: string
+          approved_by: string
+          assumptions_to_append: string
+          audit_entries_to_create: string
+          created_at: string
+          estimate_id: string
+          estimate_version: string
+          exclusions_to_append: string
+          fields_to_update: string
+          id: string
+          inclusions_to_append: string
+          line_items_to_add_or_edit: string
+          requires_reapproval: boolean
+          risk_notes_to_append: string
+          summary: string
+          user_id: string
+          write_plan_id: string
+        }
+        Insert: {
+          allowances_to_append?: string
+          apply_run_id?: string
+          apply_status?: string
+          approved_by?: string
+          assumptions_to_append?: string
+          audit_entries_to_create?: string
+          created_at?: string
+          estimate_id: string
+          estimate_version?: string
+          exclusions_to_append?: string
+          fields_to_update?: string
+          id?: string
+          inclusions_to_append?: string
+          line_items_to_add_or_edit?: string
+          requires_reapproval?: boolean
+          risk_notes_to_append?: string
+          summary?: string
+          user_id: string
+          write_plan_id?: string
+        }
+        Update: {
+          allowances_to_append?: string
+          apply_run_id?: string
+          apply_status?: string
+          approved_by?: string
+          assumptions_to_append?: string
+          audit_entries_to_create?: string
+          created_at?: string
+          estimate_id?: string
+          estimate_version?: string
+          exclusions_to_append?: string
+          fields_to_update?: string
+          id?: string
+          inclusions_to_append?: string
+          line_items_to_add_or_edit?: string
+          requires_reapproval?: boolean
+          risk_notes_to_append?: string
+          summary?: string
+          user_id?: string
+          write_plan_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_write_plans_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimates: {
         Row: {
           ai_apply_status: string
