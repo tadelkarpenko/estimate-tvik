@@ -123,6 +123,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [completenessLoading, setCompletenessLoading] = useState(false);
   const [completenessResult, setCompletenessResult] = useState<any>(null);
   const [overrideReason, setOverrideReason] = useState('');
+  const [writePlan, setWritePlan] = useState<WritePlan | null>(null);
+  const [writePlanLoading, setWritePlanLoading] = useState(false);
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
