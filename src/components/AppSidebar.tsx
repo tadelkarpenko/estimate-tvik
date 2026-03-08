@@ -1,4 +1,4 @@
-import { LayoutDashboard, FilePlus, FileText, BookOpen, ShieldAlert, Search, Settings, LogOut, Briefcase, HardHat, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, FilePlus, FileText, BookOpen, ShieldAlert, Search, Settings, LogOut, Briefcase, HardHat, CalendarDays, ClipboardList } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -14,6 +14,7 @@ const navItems = [
   { title: 'Cost Library', url: '/cost-library', icon: BookOpen },
   { title: 'Risk Library', url: '/risk-library', icon: ShieldAlert },
   { title: 'Cost Audit', url: '/cost-audit', icon: Search },
+  { title: 'Review Queue', url: '/review-queue', icon: ClipboardList },
   { title: 'Contracts', url: '/contracts', icon: Briefcase },
   { title: 'Jobs', url: '/jobs', icon: HardHat },
   { title: 'Job Calendar', url: '/jobs/calendar', icon: CalendarDays },
