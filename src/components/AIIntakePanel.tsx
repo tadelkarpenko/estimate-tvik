@@ -783,7 +783,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       if (structured.review_queue_items?.length > 0 && !isApproved) {
         const newSuggestions = structured.review_queue_items.map((item: any) => ({
           suggestion_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
+          estimate_id: dbId,
           area_id: selectedArea.id || null,
           source_type: 'merged' as SuggestionSourceType,
           suggestion_type: item.suggestion_type || 'internal_note',
@@ -802,10 +802,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
           queue_group: selectedArea.area_name || 'Merge',
           source_timestamp: new Date().toISOString(),
-          idempotency_key: `merge-${estimateDbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+          idempotency_key: `merge-${dbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
         }));
         await insertSuggestions(newSuggestions);
-        const updated = await getSuggestions(estimateDbId);
+        const updated = await getSuggestions(dbId);
         setSuggestions(updated);
       }
 
