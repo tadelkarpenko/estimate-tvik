@@ -1890,6 +1890,135 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           </ScrollArea>
         </TabsContent>
 
+        {/* ═══ MERGE TAB (Patch 6) ═══ */}
+        <TabsContent value="merge" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {/* Upstream inputs status */}
+              <Card>
+                <CardHeader className="py-2 px-3">
+                  <CardTitle className="text-xs flex items-center gap-1.5"><BarChart3 className="h-3.5 w-3.5" /> Merge Inputs</CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 space-y-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={selectedArea?.notes_text?.trim() ? 'text-green-600' : 'text-muted-foreground'}>
+                      {selectedArea?.notes_text?.trim() ? <CheckCircle className="h-3 w-3 inline" /> : <Square className="h-3 w-3 inline" />}
+                    </span>
+                    Typed Intake
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={selectedArea?.voice_analysis_status === 'Complete' ? 'text-green-600' : 'text-muted-foreground'}>
+                      {selectedArea?.voice_analysis_status === 'Complete' ? <CheckCircle className="h-3 w-3 inline" /> : <Square className="h-3 w-3 inline" />}
+                    </span>
+                    Voice Walkthrough
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={selectedArea?.photo_analysis_status === 'Complete' ? 'text-green-600' : 'text-muted-foreground'}>
+                      {selectedArea?.photo_analysis_status === 'Complete' ? <CheckCircle className="h-3 w-3 inline" /> : <Square className="h-3 w-3 inline" />}
+                    </span>
+                    Photo Analysis
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Action */}
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={mergeAnalysisLoading || !selectedArea}
+                onClick={analyzeMerge}
+              >
+                {mergeAnalysisLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Merging…</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Run Merge Analysis</>}
+              </Button>
+
+              {/* Status */}
+              {selectedArea?.merged_analysis_status && selectedArea.merged_analysis_status !== 'Not Run' && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="outline" className="text-[10px]">{selectedArea.merged_analysis_status}</Badge>
+                  {selectedArea.merged_last_updated_at && <span>Updated {new Date(selectedArea.merged_last_updated_at).toLocaleString()}</span>}
+                  {selectedArea.latest_merge_batch_id && <span className="font-mono text-[9px]">Batch: {selectedArea.latest_merge_batch_id.slice(0, 8)}</span>}
+                </div>
+              )}
+
+              {/* Confidence */}
+              {(mergeAnalysisResult?.merged_confidence || selectedArea?.merged_confidence) && (
+                <Badge variant={
+                  (mergeAnalysisResult?.merged_confidence || selectedArea?.merged_confidence) === 'High' ? 'default' :
+                  (mergeAnalysisResult?.merged_confidence || selectedArea?.merged_confidence) === 'Low' ? 'destructive' : 'secondary'
+                } className="text-xs">
+                  Confidence: {mergeAnalysisResult?.merged_confidence || selectedArea?.merged_confidence}
+                </Badge>
+              )}
+
+              {/* Conflict summary */}
+              {(mergeAnalysisResult?.conflict_summary || selectedArea?.conflict_summary) && (
+                <Card className="border-yellow-500/50 bg-yellow-500/5">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs flex items-center gap-1.5 text-yellow-700"><AlertTriangle className="h-3.5 w-3.5" /> Conflict Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3">
+                    <FindingSection content={mergeAnalysisResult?.conflict_summary || selectedArea?.conflict_summary} />
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Merged results */}
+              {(() => {
+                const r = mergeAnalysisResult || (selectedArea?.merged_scope_summary ? {
+                  merged_scope_summary: selectedArea.merged_scope_summary,
+                  merged_visible_facts: selectedArea.merged_visible_facts,
+                  merged_inferences: selectedArea.merged_inferences,
+                  merged_needs_verification: selectedArea.merged_needs_verification,
+                  merged_risks: selectedArea.merged_risks,
+                  merged_trade_detection: selectedArea.merged_trade_detection,
+                  merged_missing_questions: selectedArea.merged_missing_questions,
+                } : null);
+                if (!r) return null;
+                return (
+                  <div className="space-y-2">
+                    {r.merged_scope_summary && <Card><CardHeader className="py-2 px-3"><CardTitle className="text-xs flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Merged Scope Summary</CardTitle></CardHeader><CardContent className="px-3 pb-3"><FindingSection content={r.merged_scope_summary} /></CardContent></Card>}
+                    {r.merged_visible_facts && <Card><CardHeader className="py-2 px-3"><CardTitle className="text-xs flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> Merged Visible Facts</CardTitle></CardHeader><CardContent className="px-3 pb-3"><FindingSection content={r.merged_visible_facts} /></CardContent></Card>}
+                    {r.merged_inferences && <Card><CardHeader className="py-2 px-3"><CardTitle className="text-xs flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Merged Inferences</CardTitle></CardHeader><CardContent className="px-3 pb-3"><FindingSection content={r.merged_inferences} /></CardContent></Card>}
+                    {r.merged_needs_verification && <Card className="border-orange-500/50"><CardHeader className="py-2 px-3"><CardTitle className="text-xs flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5 text-orange-600" /> Needs Verification</CardTitle></CardHeader><CardContent className="px-3 pb-3"><FindingSection content={r.merged_needs_verification} /></CardContent></Card>}
+                    {r.merged_risks && <Card><CardHeader className="py-2 px-3"><CardTitle className="text-xs flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> Merged Risks</CardTitle></CardHeader><CardContent className="px-3 pb-3"><FindingSection content={r.merged_risks} /></CardContent></Card>}
+                    {r.merged_trade_detection && <Card><CardHeader className="py-2 px-3"><CardTitle className="text-xs flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Merged Trade Detection</CardTitle></CardHeader><CardContent className="px-3 pb-3"><FindingSection content={r.merged_trade_detection} /></CardContent></Card>}
+                    {r.merged_missing_questions && <Card><CardHeader className="py-2 px-3"><CardTitle className="text-xs flex items-center gap-1.5"><FileQuestion className="h-3.5 w-3.5" /> Merged Missing Questions</CardTitle></CardHeader><CardContent className="px-3 pb-3"><FindingSection content={r.merged_missing_questions} /></CardContent></Card>}
+                  </div>
+                );
+              })()}
+
+              {/* Site visit recommendation */}
+              {(mergeAnalysisResult?.site_visit_recommended || selectedArea?.site_visit_flag) && (
+                <Card className="border-red-500/50 bg-red-500/5">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><MapPin className="h-3.5 w-3.5" /> Site Visit Recommended</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3">
+                    <FindingSection content={selectedArea?.site_visit_reason || 'Low confidence or unresolved conflicts require on-site verification.'} />
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Queue preview */}
+              {mergeAnalysisResult?.review_queue_items?.length > 0 && (
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs">Queue Suggestions ({mergeAnalysisResult.review_queue_items.length})</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 space-y-1">
+                    {mergeAnalysisResult.review_queue_items.slice(0, 5).map((item: any, i: number) => (
+                      <div key={i} className="text-xs flex items-center gap-1.5">
+                        <Badge variant="outline" className="text-[9px]">{item.suggestion_type}</Badge>
+                        <span className="truncate">{item.suggested_value || item.reason_for_suggestion}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         {/* ═══ REVIEW QUEUE TAB ═══ */}
         <TabsContent value="queue" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
