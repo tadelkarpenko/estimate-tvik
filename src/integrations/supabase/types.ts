@@ -833,8 +833,12 @@ export type Database = {
       }
       estimates: {
         Row: {
+          ai_apply_status: string
+          ai_detected_trades: string
+          ai_intake_summary: string
           ai_price_audit_summary: string
           ai_scope: string
+          ai_scope_confidence: string
           ai_suggestions_last_json: string
           assumptions_rich: string
           calc_status: string
@@ -856,30 +860,42 @@ export type Database = {
           fixture_count: number
           hours_per_day: number
           id: string
+          intake_last_updated_at: string | null
           internal_notes: string
           internal_pdf_url: string
           labor_hours: number
           labor_subtotal: number
           last_revision_summary: string
+          likely_scope_items: string
           line_items_json: string
           material_subtotal: number
           material_volatility_flag: boolean
+          missing_info_questions: string
           overall_risk_level: string
           overhead_pct: number
+          photo_analysis_summary: string
+          photo_count: number
+          possible_hidden_risks: string
           profit_pct: number
           project_address: string
           project_name: string
           project_type: string
           public_notes: string
           public_pdf_url: string
+          revision_needed_warning: boolean
           risk_cost_high: number
           risk_cost_low: number
           risk_table_json: string
+          site_visit_required: boolean
           sqft: number
           state: string
           status: string
           subtotal: number
           subtotal_labor_hours: number
+          suggested_allowances: string
+          suggested_assumptions: string
+          suggested_exclusions: string
+          suggested_line_items: string
           timeline_rich: string
           total_high: number
           total_low: number
@@ -887,12 +903,17 @@ export type Database = {
           user_id: string
           validity_days: number
           version: string
+          visible_findings: string
           volatility_reviewed: boolean
           zip: string
         }
         Insert: {
+          ai_apply_status?: string
+          ai_detected_trades?: string
+          ai_intake_summary?: string
           ai_price_audit_summary?: string
           ai_scope?: string
+          ai_scope_confidence?: string
           ai_suggestions_last_json?: string
           assumptions_rich?: string
           calc_status?: string
@@ -914,30 +935,42 @@ export type Database = {
           fixture_count?: number
           hours_per_day?: number
           id?: string
+          intake_last_updated_at?: string | null
           internal_notes?: string
           internal_pdf_url?: string
           labor_hours?: number
           labor_subtotal?: number
           last_revision_summary?: string
+          likely_scope_items?: string
           line_items_json?: string
           material_subtotal?: number
           material_volatility_flag?: boolean
+          missing_info_questions?: string
           overall_risk_level?: string
           overhead_pct?: number
+          photo_analysis_summary?: string
+          photo_count?: number
+          possible_hidden_risks?: string
           profit_pct?: number
           project_address?: string
           project_name?: string
           project_type?: string
           public_notes?: string
           public_pdf_url?: string
+          revision_needed_warning?: boolean
           risk_cost_high?: number
           risk_cost_low?: number
           risk_table_json?: string
+          site_visit_required?: boolean
           sqft?: number
           state?: string
           status?: string
           subtotal?: number
           subtotal_labor_hours?: number
+          suggested_allowances?: string
+          suggested_assumptions?: string
+          suggested_exclusions?: string
+          suggested_line_items?: string
           timeline_rich?: string
           total_high?: number
           total_low?: number
@@ -945,12 +978,17 @@ export type Database = {
           user_id: string
           validity_days?: number
           version?: string
+          visible_findings?: string
           volatility_reviewed?: boolean
           zip?: string
         }
         Update: {
+          ai_apply_status?: string
+          ai_detected_trades?: string
+          ai_intake_summary?: string
           ai_price_audit_summary?: string
           ai_scope?: string
+          ai_scope_confidence?: string
           ai_suggestions_last_json?: string
           assumptions_rich?: string
           calc_status?: string
@@ -972,30 +1010,42 @@ export type Database = {
           fixture_count?: number
           hours_per_day?: number
           id?: string
+          intake_last_updated_at?: string | null
           internal_notes?: string
           internal_pdf_url?: string
           labor_hours?: number
           labor_subtotal?: number
           last_revision_summary?: string
+          likely_scope_items?: string
           line_items_json?: string
           material_subtotal?: number
           material_volatility_flag?: boolean
+          missing_info_questions?: string
           overall_risk_level?: string
           overhead_pct?: number
+          photo_analysis_summary?: string
+          photo_count?: number
+          possible_hidden_risks?: string
           profit_pct?: number
           project_address?: string
           project_name?: string
           project_type?: string
           public_notes?: string
           public_pdf_url?: string
+          revision_needed_warning?: boolean
           risk_cost_high?: number
           risk_cost_low?: number
           risk_table_json?: string
+          site_visit_required?: boolean
           sqft?: number
           state?: string
           status?: string
           subtotal?: number
           subtotal_labor_hours?: number
+          suggested_allowances?: string
+          suggested_assumptions?: string
+          suggested_exclusions?: string
+          suggested_line_items?: string
           timeline_rich?: string
           total_high?: number
           total_low?: number
@@ -1003,6 +1053,7 @@ export type Database = {
           user_id?: string
           validity_days?: number
           version?: string
+          visible_findings?: string
           volatility_reviewed?: boolean
           zip?: string
         }
