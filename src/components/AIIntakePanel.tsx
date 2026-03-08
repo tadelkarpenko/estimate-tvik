@@ -114,6 +114,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [initialIntakeLoading, setInitialIntakeLoading] = useState(false);
   const [photoAnalysisLoading, setPhotoAnalysisLoading] = useState(false);
   const [photoAnalysisResult, setPhotoAnalysisResult] = useState<any>(null);
+  const [mergeAnalysisLoading, setMergeAnalysisLoading] = useState(false);
+  const [mergeAnalysisResult, setMergeAnalysisResult] = useState<any>(null);
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
