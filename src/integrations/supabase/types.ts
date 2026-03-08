@@ -734,13 +734,16 @@ export type Database = {
           estimate_id: string
           id: string
           latest_ai_summary: string
+          latest_voice_batch_id: string
           likely_scope_items: string
+          low_confidence_warning: boolean
           missing_info_questions: string
           notes_text: string
           possible_hidden_risks: string
           quick_tags: string
           revision_status: string
           site_visit_flag: boolean
+          site_visit_reason: string
           suggested_allowances: string
           suggested_assumptions: string
           suggested_exclusions: string
@@ -748,8 +751,12 @@ export type Database = {
           uploaded_photo_count: number
           user_id: string
           visible_findings: string
+          voice_analysis_status: string
+          voice_capture_status: string
+          voice_last_updated_at: string | null
           voice_transcript_cleaned: string
           voice_transcript_raw: string
+          voice_transcript_source: string
         }
         Insert: {
           ai_detected_trades?: string
@@ -762,13 +769,16 @@ export type Database = {
           estimate_id: string
           id?: string
           latest_ai_summary?: string
+          latest_voice_batch_id?: string
           likely_scope_items?: string
+          low_confidence_warning?: boolean
           missing_info_questions?: string
           notes_text?: string
           possible_hidden_risks?: string
           quick_tags?: string
           revision_status?: string
           site_visit_flag?: boolean
+          site_visit_reason?: string
           suggested_allowances?: string
           suggested_assumptions?: string
           suggested_exclusions?: string
@@ -776,8 +786,12 @@ export type Database = {
           uploaded_photo_count?: number
           user_id: string
           visible_findings?: string
+          voice_analysis_status?: string
+          voice_capture_status?: string
+          voice_last_updated_at?: string | null
           voice_transcript_cleaned?: string
           voice_transcript_raw?: string
+          voice_transcript_source?: string
         }
         Update: {
           ai_detected_trades?: string
@@ -790,13 +804,16 @@ export type Database = {
           estimate_id?: string
           id?: string
           latest_ai_summary?: string
+          latest_voice_batch_id?: string
           likely_scope_items?: string
+          low_confidence_warning?: boolean
           missing_info_questions?: string
           notes_text?: string
           possible_hidden_risks?: string
           quick_tags?: string
           revision_status?: string
           site_visit_flag?: boolean
+          site_visit_reason?: string
           suggested_allowances?: string
           suggested_assumptions?: string
           suggested_exclusions?: string
@@ -804,8 +821,12 @@ export type Database = {
           uploaded_photo_count?: number
           user_id?: string
           visible_findings?: string
+          voice_analysis_status?: string
+          voice_capture_status?: string
+          voice_last_updated_at?: string | null
           voice_transcript_cleaned?: string
           voice_transcript_raw?: string
+          voice_transcript_source?: string
         }
         Relationships: [
           {

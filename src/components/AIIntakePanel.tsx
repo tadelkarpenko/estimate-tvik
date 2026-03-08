@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import type { Estimate, EstimateMedia, AIConfidence } from '@/lib/types';
+import type { VoiceCaptureStatus, VoiceAnalysisStatus } from '@/lib/areaStore';
 import {
   getSuggestions, insertSuggestions, updateSuggestionStatus, insertAppliedAudit,
   type AISuggestion, type SuggestionType, type SuggestionSourceType,
@@ -366,6 +367,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
     const hasExistingData = selectedArea.latest_ai_summary.length > 0;
     const workflow = hasExistingData ? 'revision_check' : 'intake_fresh';
+    const batchId = crypto.randomUUID();
 
     const combinedInput = [
       selectedArea.notes_text.trim(),
@@ -374,7 +376,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     ].filter(Boolean).join('');
 
     try {
-      const areaMedia = media.filter(() => true); // all media for now
+      const areaMedia = media.filter(() => true);
       const photoAnalyses = areaMedia.map(m => ({ caption: m.caption, url: m.file_url }));
 
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
@@ -427,7 +429,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
       setAreaFindings(parsed);
 
-      // Update area with findings
+      const isLowConf = parsed.confidence === 'Low';
+
+      // Update area with findings + voice lifecycle
       const updatedArea: EstimateArea = {
         ...selectedArea,
         visible_findings: parsed.visible_findings || '',
@@ -439,21 +443,106 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         suggested_assumptions: parsed.suggested_assumptions || '',
         missing_info_questions: parsed.missing_info_questions || '',
         confidence: parsed.confidence || 'Medium',
+        low_confidence_warning: isLowConf,
         site_visit_flag: parsed.site_visit_required ?? false,
+        site_visit_reason: parsed.site_visit_required ? `AI analysis flagged low confidence or hidden conditions in ${selectedArea.area_name}.` : selectedArea.site_visit_reason,
         latest_ai_summary: parsed.intake_summary || '',
+        voice_transcript_cleaned: parsed.intake_summary || selectedArea.voice_transcript_cleaned,
+        voice_analysis_status: 'Complete',
+        latest_voice_batch_id: batchId,
         revision_status: hasExistingData ? 'Updated' : 'Original',
       };
 
       await saveEstimateArea(updatedArea);
       setAreas(prev => prev.map(a => a.id === selectedArea.id ? updatedArea : a));
 
-      toast({ title: 'Area analysis complete', description: `${selectedArea.area_name}: ${parsed.confidence} confidence` });
+      // Auto-create queue items from findings
+      if (!isApproved) {
+        const sourceType: SuggestionSourceType = selectedArea.voice_transcript_raw.trim()
+          ? (media.length > 0 ? 'merged' : 'voice')
+          : (media.length > 0 ? 'photo' : 'text');
+        const newSuggestions: any[] = [];
+
+        for (const mapping of FINDINGS_TO_SUGGESTIONS) {
+          const value = parsed[mapping.findingsKey];
+          if (typeof value === 'string' && value.trim()) {
+            const items = value.split(/\n/).filter(l => l.trim().startsWith('-') || l.trim().startsWith('•') || l.trim().match(/^\d+\./));
+            const processItems = items.length > 0 ? items : [value];
+            for (const item of processItems) {
+              const cleanItem = item.replace(/^[-•\d.)\s]+/, '').trim();
+              if (!cleanItem) continue;
+              newSuggestions.push({
+                suggestion_id: crypto.randomUUID(),
+                estimate_id: estimateDbId,
+                source_type: sourceType,
+                suggestion_type: mapping.type,
+                confidence: parsed.confidence,
+                evidence_summary: `Area: ${selectedArea.area_name}. ${parsed.intake_summary || ''}`.slice(0, 200),
+                reason_for_suggestion: `AI Walkthrough (${sourceType}) — ${selectedArea.area_name} — ${mapping.type}`,
+                suggested_value: cleanItem,
+                apply_target: mapping.target,
+                status: 'pending',
+                decision_state: 'pending',
+                reviewer_notes: '',
+                approved_by: '',
+                edited_value: '',
+                area_id: selectedArea.id,
+                suggestion_batch_id: batchId,
+                block_name: 'voice_walkthrough',
+                priority_level: isLowConf ? 'High' : 'Medium',
+                queue_group: selectedArea.area_name,
+                source_timestamp: new Date().toISOString(),
+                idempotency_key: `walk-${selectedArea.id}-${batchId.slice(0, 8)}`,
+              });
+            }
+          }
+        }
+
+        if (parsed.site_visit_required) {
+          newSuggestions.push({
+            suggestion_id: crypto.randomUUID(),
+            estimate_id: estimateDbId,
+            source_type: sourceType,
+            suggestion_type: 'site_visit_recommendation',
+            confidence: parsed.confidence,
+            evidence_summary: `Area: ${selectedArea.area_name}`,
+            reason_for_suggestion: 'Confidence is low or hidden conditions are likely.',
+            suggested_value: `Site visit recommended for ${selectedArea.area_name}.`,
+            apply_target: 'site_visit_required',
+            status: 'pending',
+            decision_state: 'pending',
+            reviewer_notes: '',
+            approved_by: '',
+            edited_value: '',
+            area_id: selectedArea.id,
+            suggestion_batch_id: batchId,
+            block_name: 'voice_walkthrough',
+            priority_level: 'High',
+            queue_group: selectedArea.area_name,
+            source_timestamp: new Date().toISOString(),
+            idempotency_key: `walk-sv-${selectedArea.id}-${batchId.slice(0, 8)}`,
+          });
+        }
+
+        if (newSuggestions.length > 0) {
+          await insertSuggestions(newSuggestions);
+          const updated = await getSuggestions(estimateDbId);
+          setSuggestions(updated);
+        }
+
+        toast({ title: 'Voice walkthrough complete', description: `${selectedArea.area_name}: ${parsed.confidence} confidence. ${newSuggestions.length} suggestions queued.` });
+      } else {
+        toast({ title: 'Area analysis complete (advisory)', description: `${selectedArea.area_name}: ${parsed.confidence} confidence` });
+      }
     } catch (e: any) {
+      // Mark analysis as failed
+      const failedArea = { ...selectedArea, voice_analysis_status: 'Failed' as const };
+      setAreas(prev => prev.map(a => a.id === selectedArea.id ? failedArea : a));
       toast({ title: 'Analysis failed', description: e.message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
-  }, [selectedArea, estimateDbId, estimate, media, toast]);
+  }, [selectedArea, estimateDbId, estimate, media, isApproved, toast, onUpdate]);
 
   // ─── Send Area to Review Queue ───
   const sendAreaToQueue = async () => {
@@ -940,40 +1029,374 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                   <p className="text-xs text-muted-foreground">No areas yet. Add areas to start room-by-room intake.</p>
                 </div>
               ) : (
-                areas.map(area => (
-                  <Card
-                    key={area.id}
-                    className={`cursor-pointer transition-colors ${selectedAreaId === area.id ? 'border-primary ring-1 ring-primary/20' : 'hover:border-muted-foreground/30'}`}
-                    onClick={() => { setSelectedAreaId(area.id!); setActiveTab('capture'); }}
-                  >
-                    <CardContent className="py-2 px-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <Home className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{area.area_name || area.area_type}</p>
-                            <p className="text-xs text-muted-foreground">{area.area_type}</p>
+                areas.map(area => {
+                  const areaPending = suggestions.filter(s => (s as any).area_id === area.id && s.status === 'pending').length;
+                  return (
+                    <Card
+                      key={area.id}
+                      className={`cursor-pointer transition-colors ${selectedAreaId === area.id ? 'border-primary ring-1 ring-primary/20' : 'hover:border-muted-foreground/30'}`}
+                      onClick={() => { setSelectedAreaId(area.id!); setActiveTab('capture'); }}
+                    >
+                      <CardContent className="py-2 px-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <Home className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium truncate">{area.area_name || area.area_type}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-xs text-muted-foreground">{area.area_type}</span>
+                                {area.voice_capture_status !== 'Not Started' && (
+                                  <Badge variant="outline" className="text-xs py-0">{area.voice_capture_status}</Badge>
+                                )}
+                                {area.voice_analysis_status === 'Complete' && (
+                                  <Badge variant="outline" className="text-xs py-0 bg-emerald-50 text-emerald-700 border-emerald-200">Analyzed</Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {areaPending > 0 && <Badge variant="secondary" className="text-xs">{areaPending}</Badge>}
+                            {confidenceBadge(area.confidence)}
+                            {area.low_confidence_warning && <AlertTriangle className="h-3 w-3 text-amber-500" />}
+                            {area.site_visit_flag && <MapPin className="h-3 w-3 text-red-500" />}
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); removeArea(area.id!); }}>
+                              <Trash2 className="h-3 w-3 text-muted-foreground" />
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          {confidenceBadge(area.confidence)}
-                          {area.site_visit_flag && <MapPin className="h-3 w-3 text-red-500" />}
-                          {area.revision_status === 'Needs Review' && <AlertTriangle className="h-3 w-3 text-amber-500" />}
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); removeArea(area.id!); }}>
-                            <Trash2 className="h-3 w-3 text-muted-foreground" />
-                          </Button>
+                        {area.quick_tags && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {area.quick_tags.split(',').slice(0, 4).map((t, i) => (
+                              <Badge key={i} variant="secondary" className="text-xs">{t.trim()}</Badge>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ═══ CAPTURE TAB (Upgraded Voice Walkthrough) ═══ */}
+        <TabsContent value="capture" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-4">
+              {!selectedArea ? (
+                <div className="text-center py-8">
+                  <p className="text-xs text-muted-foreground">Select or add an area from the Areas tab first.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Area header with switcher */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Home className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold">{selectedArea.area_name || selectedArea.area_type}</span>
+                      {confidenceBadge(selectedArea.confidence)}
+                      {selectedArea.low_confidence_warning && (
+                        <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs">Low Conf Warning</Badge>
+                      )}
+                    </div>
+                    <Select value={selectedAreaId || ''} onValueChange={setSelectedAreaId}>
+                      <SelectTrigger className="w-[140px] h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {areas.map(a => (
+                          <SelectItem key={a.id} value={a.id!} className="text-xs">{a.area_name || a.area_type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Area Name */}
+                  <div>
+                    <Label className="text-xs">Area Name</Label>
+                    <Input
+                      value={selectedArea.area_name}
+                      onChange={e => updateArea('area_name', e.target.value)}
+                      className="text-xs h-8 mt-1"
+                      placeholder="e.g. Master Bathroom"
+                    />
+                  </div>
+
+                  {/* Warnings */}
+                  {isApproved && (
+                    <Card className="border-amber-300 bg-amber-50">
+                      <CardContent className="py-2 px-3 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                        <p className="text-xs text-amber-800">Approved estimate. AI findings are advisory only.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {selectedArea.site_visit_flag && (
+                    <Card className="border-red-300 bg-red-50">
+                      <CardContent className="py-2 px-3 flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-red-600 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-red-800"><strong>Site visit recommended</strong> for this area.</p>
+                          {selectedArea.site_visit_reason && (
+                            <p className="text-xs text-red-700 mt-0.5">{selectedArea.site_visit_reason}</p>
+                          )}
                         </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Voice Transcript Section */}
+                  <Card>
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs flex items-center gap-1.5">
+                        <Mic className="h-3.5 w-3.5" /> Voice Walkthrough
+                        {isRecording && <Badge className="bg-destructive text-destructive-foreground text-xs animate-pulse">Recording…</Badge>}
+                        {selectedArea.voice_capture_status !== 'Not Started' && !isRecording && (
+                          <Badge variant="outline" className="text-xs">{selectedArea.voice_capture_status}</Badge>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-3 space-y-2">
+                      {/* Recording controls */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {speechSupported ? (
+                          isRecording ? (
+                            <Button size="sm" variant="destructive" onClick={() => {
+                              stopRecording();
+                              updateArea('voice_capture_status', 'Captured');
+                              updateArea('voice_transcript_source', 'recorded');
+                              updateArea('voice_last_updated_at', new Date().toISOString());
+                            }} className="text-xs h-9 px-4">
+                              <Square className="h-3 w-3 mr-1" />Stop Recording
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" onClick={() => {
+                              startRecording();
+                              updateArea('voice_capture_status', 'Recording');
+                            }} disabled={loading} className="text-xs h-9 px-4">
+                              <Mic className="h-3 w-3 mr-1" />Start Recording
+                            </Button>
+                          )
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">Voice recording not supported. Paste transcript below.</p>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => {
+                          updateArea('voice_transcript_raw', '');
+                          updateArea('voice_capture_status', 'Not Started');
+                          updateArea('voice_transcript_source', '');
+                        }} disabled={loading || !selectedArea.voice_transcript_raw || isRecording} className="text-xs h-9">
+                          <X className="h-3 w-3 mr-1" />Clear
+                        </Button>
                       </div>
-                      {area.quick_tags && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {area.quick_tags.split(',').slice(0, 4).map((t, i) => (
-                            <Badge key={i} variant="secondary" className="text-xs">{t.trim()}</Badge>
+
+                      {/* Interim transcript */}
+                      {interimTranscript && (
+                        <p className="text-xs text-muted-foreground italic border-l-2 border-primary pl-2">{interimTranscript}</p>
+                      )}
+
+                      {/* Raw Transcript textarea */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Raw Transcript</Label>
+                        <Textarea
+                          value={selectedArea.voice_transcript_raw}
+                          onChange={e => {
+                            updateArea('voice_transcript_raw', e.target.value);
+                            if (e.target.value.trim() && selectedArea.voice_capture_status === 'Not Started') {
+                              updateArea('voice_capture_status', 'Captured');
+                              updateArea('voice_transcript_source', 'pasted');
+                              updateArea('voice_last_updated_at', new Date().toISOString());
+                            }
+                          }}
+                          placeholder="Tap 'Start Recording' to dictate, or paste transcript here..."
+                          className="text-xs min-h-[80px] mt-1"
+                          disabled={loading || isRecording}
+                        />
+                      </div>
+
+                      {/* Cleaned Transcript (read-only, shown after analysis) */}
+                      {selectedArea.voice_transcript_cleaned && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Cleaned Transcript</Label>
+                          <div className="text-xs border rounded p-2 mt-1 bg-muted/30 max-h-[100px] overflow-auto">
+                            {selectedArea.voice_transcript_cleaned}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Voice lifecycle status bar */}
+                      <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                        {selectedArea.voice_transcript_source && (
+                          <span>Source: <strong>{selectedArea.voice_transcript_source}</strong></span>
+                        )}
+                        {selectedArea.voice_analysis_status !== 'Not Run' && (
+                          <span>Analysis: <strong>{selectedArea.voice_analysis_status}</strong></span>
+                        )}
+                        {selectedArea.voice_last_updated_at && (
+                          <span>Updated: {new Date(selectedArea.voice_last_updated_at).toLocaleTimeString()}</span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Typed Notes */}
+                  <Card>
+                    <CardContent className="py-3 px-3 space-y-2">
+                      <Label className="text-xs font-medium">Typed Notes</Label>
+                      <Textarea
+                        value={selectedArea.notes_text}
+                        onChange={e => updateArea('notes_text', e.target.value)}
+                        placeholder="Describe conditions, customer requests, measurements..."
+                        className="text-xs min-h-[60px]"
+                        disabled={loading}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Photos */}
+                  <Card>
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs flex items-center gap-1.5"><Camera className="h-3.5 w-3.5" /> Photos ({media.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-3">
+                      {estimateDbId ? (
+                        <MediaUploader folder="estimates" onUploaded={async () => { onMediaChange(); updateArea('uploaded_photo_count', selectedArea.uploaded_photo_count + 1); }} />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Save estimate first.</p>
+                      )}
+                      {media.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {media.slice(0, 6).map(m => (
+                            <div key={m.id} className="w-12 h-12 rounded border overflow-hidden">
+                              <img src={m.file_url} alt={m.caption} className="w-full h-full object-cover" />
+                            </div>
                           ))}
+                          {media.length > 6 && <span className="text-xs text-muted-foreground self-center">+{media.length - 6}</span>}
                         </div>
                       )}
                     </CardContent>
                   </Card>
-                ))
+
+                  {/* Quick Tags */}
+                  <Card>
+                    <CardContent className="py-3 px-3 space-y-2">
+                      <Label className="text-xs font-medium">Quick Tags</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {QUICK_TAGS_EXTENDED.map(tag => (
+                          <Badge
+                            key={tag}
+                            variant={currentAreaTags.includes(tag) ? 'default' : 'outline'}
+                            className="text-xs cursor-pointer select-none py-1 px-2"
+                            onClick={() => toggleAreaTag(tag)}
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* ─── Structured Area Findings ─── */}
+                  {selectedArea.voice_analysis_status === 'Complete' && selectedArea.latest_ai_summary && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> Area Findings</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        <FindingSection content={selectedArea.latest_ai_summary} />
+
+                        {selectedArea.visible_findings && (
+                          <div>
+                            <SectionHeader id={`af-vis-${selectedArea.id}`} icon={Eye} title="Visible Facts" />
+                            {expandedSections.has(`af-vis-${selectedArea.id}`) && <FindingSection content={selectedArea.visible_findings} />}
+                          </div>
+                        )}
+                        {selectedArea.likely_scope_items && (
+                          <div>
+                            <SectionHeader id={`af-scope-${selectedArea.id}`} icon={Wrench} title="Likely Inferences" />
+                            {expandedSections.has(`af-scope-${selectedArea.id}`) && <FindingSection content={selectedArea.likely_scope_items} />}
+                          </div>
+                        )}
+                        {selectedArea.possible_hidden_risks && (
+                          <div>
+                            <SectionHeader id={`af-risk-${selectedArea.id}`} icon={Shield} title="Needs Verification / Risks" />
+                            {expandedSections.has(`af-risk-${selectedArea.id}`) && <FindingSection content={selectedArea.possible_hidden_risks} />}
+                          </div>
+                        )}
+                        {selectedArea.ai_detected_trades && (
+                          <div>
+                            <SectionHeader id={`af-trades-${selectedArea.id}`} icon={Wrench} title="Detected Trades" />
+                            {expandedSections.has(`af-trades-${selectedArea.id}`) && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {selectedArea.ai_detected_trades.split(',').map((t, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs">{t.trim()}</Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {selectedArea.missing_info_questions && (
+                          <div>
+                            <SectionHeader id={`af-q-${selectedArea.id}`} icon={FileQuestion} title="Missing Info / Questions" />
+                            {expandedSections.has(`af-q-${selectedArea.id}`) && <FindingSection content={selectedArea.missing_info_questions} />}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* ─── Area Queue Preview ─── */}
+                  {(() => {
+                    const areaSuggestions = suggestions.filter(s => (s as any).area_id === selectedArea.id);
+                    const areaPending = areaSuggestions.filter(s => s.status === 'pending');
+                    if (areaSuggestions.length === 0) return null;
+                    return (
+                      <Card>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs flex items-center gap-1.5">
+                            <Send className="h-3.5 w-3.5" /> Area Queue
+                            {areaPending.length > 0 && <Badge variant="secondary" className="text-xs">{areaPending.length} pending</Badge>}
+                            <Badge variant="outline" className="text-xs">{areaSuggestions.length} total</Badge>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1.5">
+                          {areaSuggestions.slice(0, 5).map(s => (
+                            <div key={s.id} className="flex items-center gap-2 text-xs border rounded p-1.5">
+                              <Badge variant="outline" className="text-xs shrink-0">
+                                {SUGGESTION_TYPE_LABELS[s.suggestion_type as SuggestionType] || s.suggestion_type}
+                              </Badge>
+                              <span className="flex-1 truncate">{s.suggested_value}</span>
+                              {confidenceBadge(s.confidence as AIConfidence)}
+                              <Badge variant="outline" className={`text-xs shrink-0 ${SUGGESTION_STATUS_COLORS[s.status as keyof typeof SUGGESTION_STATUS_COLORS] || ''}`}>
+                                {s.status}
+                              </Badge>
+                            </div>
+                          ))}
+                          {areaSuggestions.length > 5 && (
+                            <p className="text-xs text-muted-foreground">+{areaSuggestions.length - 5} more</p>
+                          )}
+                          <Button size="sm" variant="outline" className="text-xs h-7 w-full mt-1" onClick={() => { setQueueAreaFilter(selectedArea.id!); setActiveTab('queue'); }}>
+                            View All Area Suggestions →
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-1.5 sticky bottom-0 bg-background py-2">
+                    <Button size="sm" onClick={saveCurrentArea} disabled={loading} variant="outline" className="text-xs h-9">
+                      <CheckCircle className="h-3 w-3 mr-1" />Save Area
+                    </Button>
+                    <Button size="sm" onClick={analyzeArea} disabled={loading || (!selectedArea.voice_transcript_raw.trim() && !selectedArea.notes_text.trim())} className="text-xs h-9">
+                      <Sparkles className="h-3 w-3 mr-1" />{loading ? 'Analyzing…' : 'Analyze Voice Walkthrough'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      updateArea('site_visit_flag', !selectedArea.site_visit_flag);
+                    }} className={`text-xs h-9 ${selectedArea.site_visit_flag ? 'bg-red-50 border-red-300 text-red-700' : ''}`}>
+                      <MapPin className="h-3 w-3 mr-1" />{selectedArea.site_visit_flag ? 'Site Visit ✓' : 'Mark Site Visit'}
+                    </Button>
+                  </div>
+                </>
               )}
             </div>
           </ScrollArea>
