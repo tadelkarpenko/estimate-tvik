@@ -2791,6 +2791,167 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           </ScrollArea>
         </TabsContent>
 
+        {/* ═══ APPLY TAB (Patch 9) ═══ */}
+        <TabsContent value="apply" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {/* Status bar */}
+              <Card>
+                <CardContent className="px-3 py-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Status: <strong>{estimate.status || 'Draft'}</strong></span>
+                    <span className="text-muted-foreground">Version: <strong>{estimate.version || 'v1.0'}</strong></span>
+                    <span className="text-muted-foreground">Approved: <strong>{approvedCount}</strong></span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Generate button */}
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={writePlanLoading || approvedCount === 0}
+                onClick={generateAndStageWritePlan}
+              >
+                {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Generating…</> : <><ClipboardList className="h-3.5 w-3.5 mr-1.5" /> Generate Write Plan ({approvedCount} approved)</>}
+              </Button>
+
+              {approvedCount === 0 && (
+                <Card><CardContent className="px-3 py-3"><p className="text-xs text-muted-foreground">Approve suggestions in the Queue tab first. Only approved items are included in the write plan.</p></CardContent></Card>
+              )}
+
+              {/* Write Plan Preview */}
+              {writePlan && (() => {
+                const fields: WritePlanFieldUpdate[] = JSON.parse(writePlan.fields_to_update || '[]');
+                const lineItems: WritePlanLineItem[] = JSON.parse(writePlan.line_items_to_add_or_edit || '[]');
+                const exclusions: string[] = JSON.parse(writePlan.exclusions_to_append || '[]');
+                const allowances: string[] = JSON.parse(writePlan.allowances_to_append || '[]');
+                const assumptions: string[] = JSON.parse(writePlan.assumptions_to_append || '[]');
+                const riskNotes: string[] = JSON.parse(writePlan.risk_notes_to_append || '[]');
+                const audits: WritePlanAuditEntry[] = JSON.parse(writePlan.audit_entries_to_create || '[]');
+
+                return (
+                  <div className="space-y-3">
+                    {/* Summary */}
+                    <Card>
+                      <CardContent className="px-3 py-2">
+                        <p className="text-xs">{writePlan.summary}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge variant={writePlan.apply_status === 'applied' ? 'default' : writePlan.apply_status === 'failed' ? 'destructive' : 'secondary'} className="text-[10px]">
+                            {writePlan.apply_status}
+                          </Badge>
+                          {writePlan.requires_reapproval && (
+                            <Badge variant="destructive" className="text-[10px]">Requires Reapproval</Badge>
+                          )}
+                          {!writePlan.requires_reapproval && (
+                            <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700">No Reapproval</Badge>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Fields to update */}
+                    {fields.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs">Fields To Update ({fields.length})</CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1.5">
+                          {fields.map((f, i) => (
+                            <div key={i} className="border-l-2 border-primary/30 pl-2.5 text-xs">
+                              <span className="font-medium">{f.field}</span>
+                              <Badge variant="outline" className="text-[9px] ml-1">{f.action}</Badge>
+                              <p className="text-muted-foreground truncate">{f.value}</p>
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Line items */}
+                    {lineItems.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs">Line Items To Add ({lineItems.length})</CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1.5">
+                          {lineItems.map((li, i) => (
+                            <div key={i} className="border-l-2 border-primary/30 pl-2.5 text-xs">
+                              <Badge variant="outline" className="text-[9px]">{li.action}</Badge>
+                              <span className="ml-1 font-medium">{li.description}</span>
+                              {li.phase && <span className="text-muted-foreground ml-1">({li.phase})</span>}
+                              {li.qty != null && <span className="text-muted-foreground ml-1">qty: {li.qty}</span>}
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Append sections */}
+                    {exclusions.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Exclusions To Append ({exclusions.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{exclusions.map((e, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {e}</p>)}</CardContent>
+                      </Card>
+                    )}
+                    {allowances.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Allowances To Append ({allowances.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{allowances.map((a, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {a}</p>)}</CardContent>
+                      </Card>
+                    )}
+                    {assumptions.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Assumptions To Append ({assumptions.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{assumptions.map((a, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {a}</p>)}</CardContent>
+                      </Card>
+                    )}
+                    {riskNotes.length > 0 && (
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Risk Notes To Append ({riskNotes.length})</CardTitle></CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-1">{riskNotes.map((r, i) => <p key={i} className="text-xs border-l-2 border-primary/30 pl-2.5">• {r}</p>)}</CardContent>
+                      </Card>
+                    )}
+
+                    {/* Audit preview */}
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs">Audit Entries ({audits.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs text-muted-foreground">{audits.length} audit records will be created to trace each applied suggestion.</p>
+                      </CardContent>
+                    </Card>
+
+                    {/* Execute button */}
+                    {writePlan.apply_status === 'staged' && (
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        variant="gold"
+                        disabled={writePlanLoading}
+                        onClick={executeWritePlan}
+                      >
+                        {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Applying…</> : <><CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Execute Write Plan</>}
+                      </Button>
+                    )}
+
+                    {writePlan.apply_status === 'applied' && (
+                      <Card className="border-emerald-300 bg-emerald-50">
+                        <CardContent className="px-3 py-3">
+                          <p className="text-xs flex items-center gap-1.5 text-emerald-800">
+                            <CheckCircle className="h-3.5 w-3.5" /> Write plan applied successfully. {audits.length} audit entries created.
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         {/* ═══ SUMMARY TAB ═══ */}
         <TabsContent value="summary" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
