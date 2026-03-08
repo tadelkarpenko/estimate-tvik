@@ -925,7 +925,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMissingInfoLoading(false);
     }
-  }, [estimateDbId, selectedArea, estimate, isApproved, toast]);
+  }, [estimateDbId, ensureSaved, selectedArea, estimate, isApproved, toast]);
 
   // ─── Completeness Check (Patch 8) ───
   const runCompletenessCheck = useCallback(async () => {
