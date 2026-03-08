@@ -414,6 +414,7 @@ function rowToEstimate(r: any): Estimate {
     ai_revision_review_status: r.ai_revision_review_status || 'No Review Needed',
     estimate_site_visit_recommended: r.estimate_site_visit_recommended ?? false,
     estimate_confidence_rollup: r.estimate_confidence_rollup || 'Medium',
+    estimate_completeness_summary: r.estimate_completeness_summary || '',
   } as Estimate;
 }
 
