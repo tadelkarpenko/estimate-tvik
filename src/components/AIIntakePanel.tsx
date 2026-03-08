@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import type { Estimate, EstimateMedia, AIConfidence } from '@/lib/types';
+import type { VoiceCaptureStatus, VoiceAnalysisStatus } from '@/lib/areaStore';
 import {
   getSuggestions, insertSuggestions, updateSuggestionStatus, insertAppliedAudit,
   type AISuggestion, type SuggestionType, type SuggestionSourceType,
