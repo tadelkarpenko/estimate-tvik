@@ -1524,6 +1524,229 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           </ScrollArea>
         </TabsContent>
 
+        {/* ═══ PHOTOS TAB (Patch 5) ═══ */}
+        <TabsContent value="photos" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-4">
+              {isApproved && (
+                <Card className="border-amber-300 bg-amber-50">
+                  <CardContent className="py-2 px-3 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                    <p className="text-xs text-amber-800">Approved estimate — photo analysis is advisory only.</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Area context */}
+              {selectedArea && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Home className="h-3.5 w-3.5" />
+                  <span>Area: <strong>{selectedArea.area_name || selectedArea.area_type}</strong></span>
+                  {selectedArea.photo_analysis_status !== 'Not Run' && (
+                    <Badge variant="outline" className="text-xs">{selectedArea.photo_analysis_status}</Badge>
+                  )}
+                </div>
+              )}
+
+              {/* Photo Upload */}
+              <Card>
+                <CardHeader className="py-2 px-3">
+                  <CardTitle className="text-xs flex items-center gap-1.5">
+                    <Camera className="h-3.5 w-3.5" /> Photos ({media.length})
+                    {selectedArea && <Badge variant="outline" className="text-xs">{selectedArea.uploaded_photo_count} uploaded</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3">
+                  {estimateDbId ? (
+                    <MediaUploader folder="estimates" onUploaded={async () => {
+                      onMediaChange();
+                      if (selectedArea) updateArea('uploaded_photo_count', selectedArea.uploaded_photo_count + 1);
+                    }} />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Save estimate first.</p>
+                  )}
+                  {media.length > 0 && (
+                    <div className="mt-2 grid grid-cols-4 gap-1.5">
+                      {media.map(m => (
+                        <div key={m.id} className="aspect-square rounded border overflow-hidden">
+                          <img src={m.file_url} alt={m.caption} className="w-full h-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Analyze Button */}
+              <Button
+                onClick={analyzePhotos}
+                disabled={photoAnalysisLoading || media.length === 0}
+                className="w-full text-xs h-9"
+              >
+                <Camera className="h-3 w-3 mr-1" />
+                {photoAnalysisLoading ? 'Analyzing Photos…' : `Analyze ${media.length} Photo${media.length !== 1 ? 's' : ''}`}
+              </Button>
+
+              {/* Status bar */}
+              {selectedArea && selectedArea.photo_analysis_status !== 'Not Run' && (
+                <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                  <span>Status: <strong>{selectedArea.photo_analysis_status}</strong></span>
+                  {selectedArea.latest_photo_batch_id && (
+                    <span>Batch: <code className="text-xs">{selectedArea.latest_photo_batch_id.slice(0, 8)}</code></span>
+                  )}
+                  {selectedArea.updated_at && (
+                    <span>Updated: {new Date(selectedArea.updated_at).toLocaleTimeString()}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Structured Results */}
+              {photoAnalysisResult && (
+                <div className="space-y-3">
+                  {/* Summary */}
+                  {photoAnalysisResult.photo_summary && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5">
+                          <Eye className="h-3.5 w-3.5" /> Photo Summary
+                          {confidenceBadge(photoAnalysisResult.image_confidence || 'Medium')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs text-foreground">{photoAnalysisResult.photo_summary}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Low Confidence Warning */}
+                  {photoAnalysisResult.image_confidence === 'Low' && (
+                    <Card className="border-amber-300 bg-amber-50">
+                      <CardContent className="py-2 px-3 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                        <p className="text-xs text-amber-800"><strong>Low confidence.</strong> Visual evidence is insufficient for reliable scope extraction. Suggestions remain in queue only.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Site Visit Recommendation */}
+                  {photoAnalysisResult.site_visit_recommended && (
+                    <Card className="border-red-300 bg-red-50">
+                      <CardContent className="py-2 px-3 flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-red-600 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-red-800"><strong>Site visit recommended</strong></p>
+                          {photoAnalysisResult.site_visit_reason && (
+                            <p className="text-xs text-red-700 mt-0.5">{photoAnalysisResult.site_visit_reason}</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Visible Facts */}
+                  {photoAnalysisResult.visible_facts && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> Visible Facts</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <FindingSection content={photoAnalysisResult.visible_facts} />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Probable Scope Items */}
+                  {photoAnalysisResult.probable_scope_items && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Probable Scope Items</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <FindingSection content={photoAnalysisResult.probable_scope_items} />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Probable Hidden Risks */}
+                  {photoAnalysisResult.probable_hidden_risks && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> Probable Hidden Risks</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <FindingSection content={photoAnalysisResult.probable_hidden_risks} />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Trade Detection */}
+                  {photoAnalysisResult.trade_detection && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Detected Trades</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {photoAnalysisResult.trade_detection.split(',').map((t: string, i: number) => (
+                            <Badge key={i} variant="outline" className="text-xs">{t.trim()}</Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Missing Visual Information */}
+                  {photoAnalysisResult.missing_visual_information && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><FileQuestion className="h-3.5 w-3.5" /> Missing Visual Information</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <FindingSection content={photoAnalysisResult.missing_visual_information} />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Queue Suggestions Preview */}
+                  {photoAnalysisResult.review_queue_items?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5">
+                          <Send className="h-3.5 w-3.5" /> Queue Suggestions
+                          <Badge variant="secondary" className="text-xs">{photoAnalysisResult.review_queue_items.length} created</Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ul className="space-y-1.5">
+                          {photoAnalysisResult.review_queue_items.map((item: any, i: number) => (
+                            <li key={i} className="text-xs border rounded p-2 flex items-start gap-2">
+                              <Badge variant="outline" className="text-xs shrink-0">{SUGGESTION_TYPE_LABELS[item.suggestion_type as SuggestionType] || item.suggestion_type}</Badge>
+                              <span className="text-foreground flex-1">{item.suggested_value}</span>
+                              {confidenceBadge(item.confidence || 'Medium')}
+                            </li>
+                          ))}
+                        </ul>
+                        <Button size="sm" variant="outline" className="text-xs h-7 mt-2 w-full" onClick={() => setActiveTab('queue')}>
+                          View in Review Queue →
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!photoAnalysisResult && !photoAnalysisLoading && (
+                <div className="text-center py-6">
+                  <Camera className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-xs text-muted-foreground">Upload photos above and click "Analyze Photos" to extract structured findings.</p>
+                  <p className="text-xs text-muted-foreground mt-1">The AI identifies visible conditions, probable scope, risks, and trades — no pricing or quantities.</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         {/* ═══ REVIEW QUEUE TAB ═══ */}
         <TabsContent value="queue" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
