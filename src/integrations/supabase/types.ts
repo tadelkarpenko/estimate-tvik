@@ -17,6 +17,7 @@ export type Database = {
       ai_applied_suggestions_audit: {
         Row: {
           applied_field: string
+          apply_run_id: string
           approved_at: string | null
           approved_by: string
           area_id: string | null
@@ -24,6 +25,7 @@ export type Database = {
           confidence: string
           created_at: string
           estimate_id: string
+          estimate_version: string
           final_applied_value: string
           id: string
           original_suggestion: string
@@ -34,6 +36,7 @@ export type Database = {
         }
         Insert: {
           applied_field?: string
+          apply_run_id?: string
           approved_at?: string | null
           approved_by?: string
           area_id?: string | null
@@ -41,6 +44,7 @@ export type Database = {
           confidence?: string
           created_at?: string
           estimate_id: string
+          estimate_version?: string
           final_applied_value?: string
           id?: string
           original_suggestion?: string
@@ -51,6 +55,7 @@ export type Database = {
         }
         Update: {
           applied_field?: string
+          apply_run_id?: string
           approved_at?: string | null
           approved_by?: string
           area_id?: string | null
@@ -58,6 +63,7 @@ export type Database = {
           confidence?: string
           created_at?: string
           estimate_id?: string
+          estimate_version?: string
           final_applied_value?: string
           id?: string
           original_suggestion?: string
@@ -96,17 +102,25 @@ export type Database = {
           approved_at: string | null
           approved_by: string
           area_id: string | null
+          block_name: string
           confidence: string
           created_at: string
+          decision_state: string
           edited_value: string
           estimate_id: string
+          estimate_version: string
           evidence_summary: string
           id: string
+          idempotency_key: string
           priority_level: string
           queue_group: string
           reason_for_suggestion: string
           rejected_at: string | null
+          requires_reapproval_if_applied: boolean
           reviewer_notes: string
+          schema_version: string
+          severity_level: string
+          source_refs: string
           source_timestamp: string | null
           source_type: string
           status: string
@@ -114,6 +128,7 @@ export type Database = {
           suggestion_batch_id: string
           suggestion_id: string
           suggestion_type: string
+          supersedes_suggestion_id: string
           updated_at: string
           user_id: string
         }
@@ -122,17 +137,25 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string
           area_id?: string | null
+          block_name?: string
           confidence?: string
           created_at?: string
+          decision_state?: string
           edited_value?: string
           estimate_id: string
+          estimate_version?: string
           evidence_summary?: string
           id?: string
+          idempotency_key?: string
           priority_level?: string
           queue_group?: string
           reason_for_suggestion?: string
           rejected_at?: string | null
+          requires_reapproval_if_applied?: boolean
           reviewer_notes?: string
+          schema_version?: string
+          severity_level?: string
+          source_refs?: string
           source_timestamp?: string | null
           source_type?: string
           status?: string
@@ -140,6 +163,7 @@ export type Database = {
           suggestion_batch_id?: string
           suggestion_id?: string
           suggestion_type?: string
+          supersedes_suggestion_id?: string
           updated_at?: string
           user_id: string
         }
@@ -148,17 +172,25 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string
           area_id?: string | null
+          block_name?: string
           confidence?: string
           created_at?: string
+          decision_state?: string
           edited_value?: string
           estimate_id?: string
+          estimate_version?: string
           evidence_summary?: string
           id?: string
+          idempotency_key?: string
           priority_level?: string
           queue_group?: string
           reason_for_suggestion?: string
           rejected_at?: string | null
+          requires_reapproval_if_applied?: boolean
           reviewer_notes?: string
+          schema_version?: string
+          severity_level?: string
+          source_refs?: string
           source_timestamp?: string | null
           source_type?: string
           status?: string
@@ -166,6 +198,7 @@ export type Database = {
           suggestion_batch_id?: string
           suggestion_id?: string
           suggestion_type?: string
+          supersedes_suggestion_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -877,6 +910,62 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      estimate_health_checks: {
+        Row: {
+          block_approval: boolean
+          block_source: string
+          completeness_score: number
+          confidence_rollup: string
+          created_at: string
+          estimate_id: string
+          estimate_version: string
+          health_check_id: string
+          id: string
+          mismatch_summary: string
+          site_visit_recommended: boolean
+          user_id: string
+          warning_level: string
+        }
+        Insert: {
+          block_approval?: boolean
+          block_source?: string
+          completeness_score?: number
+          confidence_rollup?: string
+          created_at?: string
+          estimate_id: string
+          estimate_version?: string
+          health_check_id?: string
+          id?: string
+          mismatch_summary?: string
+          site_visit_recommended?: boolean
+          user_id: string
+          warning_level?: string
+        }
+        Update: {
+          block_approval?: boolean
+          block_source?: string
+          completeness_score?: number
+          confidence_rollup?: string
+          created_at?: string
+          estimate_id?: string
+          estimate_version?: string
+          health_check_id?: string
+          id?: string
+          mismatch_summary?: string
+          site_visit_recommended?: boolean
+          user_id?: string
+          warning_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_health_checks_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       estimate_line_items: {
         Row: {
