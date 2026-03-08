@@ -54,25 +54,53 @@ export default function EstimatesList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Estimates</h1>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold">Estimates</h1>
         <Button variant="gold" onClick={() => navigate('/estimates/new')}>+ New Estimate</Button>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
-        <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
+      <div className="flex gap-2 flex-wrap">
+        <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="w-full sm:max-w-xs" />
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Type" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="Bath">Bath</SelectItem><SelectItem value="Full Rehab">Full Rehab</SelectItem><SelectItem value="Kitchen">Kitchen</SelectItem><SelectItem value="Small Job">Small Job</SelectItem></SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="Draft">Draft</SelectItem><SelectItem value="Ready">Ready</SelectItem><SelectItem value="Sent">Sent</SelectItem><SelectItem value="Accepted">Accepted</SelectItem><SelectItem value="Rejected">Rejected</SelectItem></SelectContent>
         </Select>
       </div>
 
-      <Card>
-        <CardContent className="pt-4">
+      {/* Mobile card view */}
+      <div className="block md:hidden space-y-2">
+        {filtered.map(e => (
+          <Card key={e.estimate_id} className="cursor-pointer" onClick={() => navigate(`/estimates/${e.estimate_id}`)}>
+            <CardContent className="p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{e.project_name || e.estimate_id}</p>
+                  <p className="text-xs text-muted-foreground truncate">{e.client_name || '—'} · {e.city || '—'}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{e.total_low > 0 ? `${fmt(e.total_low)}–${fmt(e.total_high)}` : '—'}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge variant={e.status === 'Accepted' ? 'default' : 'secondary'} className="text-xs">{e.status}</Badge>
+                  <Badge variant="secondary" className="text-xs">{e.project_type}</Badge>
+                </div>
+              </div>
+              <div className="flex gap-1 mt-2" onClick={ev => ev.stopPropagation()}>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => dup(e)}><Copy className="h-3 w-3" /></Button>
+                {e.subtotal > 0 && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => generatePublicPDF(e)}><FileDown className="h-3 w-3" /></Button>}
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del(e.estimate_id)}><Trash2 className="h-3 w-3" /></Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {filtered.length === 0 && <p className="text-center py-8 text-muted-foreground">No estimates found</p>}
+      </div>
+
+      {/* Desktop table view */}
+      <Card className="hidden md:block">
+        <CardContent className="pt-4 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
