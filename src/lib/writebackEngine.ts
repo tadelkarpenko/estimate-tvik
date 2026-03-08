@@ -258,21 +258,23 @@ export async function executeWriteback(
     const approvedSuggestionIds = auditEntries.map(a => a.suggestion_id);
     if (approvedSuggestionIds.length > 0) {
       for (const sid of approvedSuggestionIds) {
-        await supabase
-          .from('ai_suggestions_queue')
-          .update({ status: 'applied', approved_by: 'TVIK' })
-          .eq('id', sid)
-          .catch(() => {}); // non-critical
+        try {
+          await supabase
+            .from('ai_suggestions_queue')
+            .update({ status: 'applied', approved_by: 'TVIK' })
+            .eq('id', sid);
+        } catch { /* non-critical */ }
       }
     }
 
     // 11. Update write plan status
     if (plan.id) {
-      await supabase
-        .from('estimate_write_plans')
-        .update({ apply_status: 'applied' })
-        .eq('id', plan.id)
-        .catch(() => {});
+      try {
+        await supabase
+          .from('estimate_write_plans')
+          .update({ apply_status: 'applied' })
+          .eq('id', plan.id);
+      } catch { /* non-critical */ }
     }
 
     // Final status
