@@ -1551,24 +1551,21 @@ export default function NewEstimate() {
         </DialogContent>
       </Dialog>
 
-      {/* AI Intake Assistant Sheet */}
-      <Sheet open={intakeOpen} onOpenChange={setIntakeOpen}>
-        <SheetContent side="right" className="w-full sm:w-[420px] md:w-[480px] p-0">
-          <AIIntakePanel
-            estimate={form}
-            estimateDbId={estimateDbId}
-            media={media}
-            onUpdate={update}
-            onSave={saveDraft}
-            onMediaChange={async () => {
-              if (estimateDbId) {
-                const med = await getEstimateMedia(estimateDbId);
-                setMedia(med);
-              }
-            }}
-          />
-        </SheetContent>
-      </Sheet>
+      {/* Mobile AI Panel (collapsible) */}
+      {mobileAiOpen && (
+        <div className="lg:hidden">
+          {aiPanelContent}
+        </div>
+      )}
+
+      </div>{/* end left column */}
+
+      {/* Right: AI Intake Panel - persistent on desktop */}
+      <div className="hidden lg:block w-[420px] shrink-0">
+        <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-border bg-card">
+          {aiPanelContent}
+        </div>
+      </div>
     </div>
   );
 }
