@@ -105,13 +105,12 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [queueFilter, setQueueFilter] = useState<string>('all');
   const [queueAreaFilter, setQueueAreaFilter] = useState<string>('all');
 
-  // Rollup
-  const [rollup, setRollup] = useState<EstimateRollup | null>(null);
-
-  // Speech recognition
-  const [isRecording, setIsRecording] = useState(false);
-  const [interimTranscript, setInterimTranscript] = useState('');
-  const recognitionRef = useRef<any>(null);
+  // Initial Intake state (Patch 3)
+  const [initialIntakeDesc, setInitialIntakeDesc] = useState('');
+  const [initialIntakeGoal, setInitialIntakeGoal] = useState('');
+  const [initialIntakeUrgency, setInitialIntakeUrgency] = useState('');
+  const [initialIntakeResult, setInitialIntakeResult] = useState<InitialIntakeResult | null>(null);
+  const [initialIntakeLoading, setInitialIntakeLoading] = useState(false);
   const speechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   const startRecording = useCallback(() => {
