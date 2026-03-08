@@ -89,6 +89,65 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
 
+  // Speech recognition
+  const [isRecording, setIsRecording] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const recognitionRef = useRef<any>(null);
+  const speechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const startRecording = useCallback(() => {
+    if (!speechSupported || !selectedArea) return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          final += transcript + ' ';
+        } else {
+          interim += transcript;
+        }
+      }
+      if (final) {
+        setAreas(prev => prev.map(a => {
+          if (a.id !== selectedAreaId) return a;
+          return { ...a, voice_transcript_raw: (a.voice_transcript_raw ? a.voice_transcript_raw + ' ' : '') + final.trim() };
+        }));
+      }
+      setInterimTranscript(interim);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsRecording(false);
+      toast({ title: 'Voice error', description: event.error, variant: 'destructive' });
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      setInterimTranscript('');
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  }, [speechSupported, selectedArea, selectedAreaId, toast]);
+
+  const stopRecording = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsRecording(false);
+    setInterimTranscript('');
+  }, []);
+
   const isApproved = estimate.status === 'Accepted';
   const selectedArea = areas.find(a => a.id === selectedAreaId);
 
