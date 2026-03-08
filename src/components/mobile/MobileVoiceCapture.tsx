@@ -36,7 +36,7 @@ export function MobileVoiceCapture({
   const [saving, setSaving] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
   const [interimText, setInterimText] = useState('');
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const speechSupported = !!getSpeechRecognition();
 
   // Save draft to localStorage on change
