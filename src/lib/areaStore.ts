@@ -11,6 +11,7 @@ export type RevisionStatus = 'Original' | 'Updated' | 'Needs Review';
 export type AIConfidence = 'High' | 'Medium' | 'Low';
 export type VoiceCaptureStatus = 'Not Started' | 'Recording' | 'Paused' | 'Captured' | 'Transcribed' | 'Failed';
 export type VoiceAnalysisStatus = 'Not Run' | 'Ready' | 'Complete' | 'Failed';
+export type PhotoAnalysisStatus = 'Not Run' | 'Ready' | 'Complete' | 'Failed';
 export type VoiceTranscriptSource = '' | 'recorded' | 'pasted' | 'imported';
 
 export const AREA_TYPES: AreaType[] = [
