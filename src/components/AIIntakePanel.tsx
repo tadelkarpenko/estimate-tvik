@@ -578,7 +578,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Photo Analysis (Patch 5) ───
   const analyzePhotos = useCallback(async () => {
-    if (!estimateDbId || media.length === 0) {
+    const resolvedPhotoId = estimateDbId;
+    if (!resolvedPhotoId || media.length === 0) {
       toast({ title: 'Upload photos first', variant: 'destructive' });
       return;
     }
