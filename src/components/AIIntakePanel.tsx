@@ -2392,6 +2392,191 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           </ScrollArea>
         </TabsContent>
 
+        {/* ═══ COMPLETENESS CHECK TAB (Patch 8) ═══ */}
+        <TabsContent value="check" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {/* Action Button */}
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={completenessLoading || areas.length === 0}
+                onClick={runCompletenessCheck}
+              >
+                {completenessLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Running Check…</> : <><Shield className="h-3.5 w-3.5 mr-1.5" /> Run Completeness Check</>}
+              </Button>
+
+              {areas.length === 0 && (
+                <Card><CardContent className="px-3 py-3"><p className="text-xs text-muted-foreground">Add areas and run intake analysis before checking completeness.</p></CardContent></Card>
+              )}
+
+              {/* Results */}
+              {completenessResult && (
+                <div className="space-y-3">
+                  {/* Score + Warning */}
+                  <Card>
+                    <CardContent className="px-3 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground">Completeness:</span>
+                          <span className="text-lg font-bold">{completenessResult.completeness_score}%</span>
+                        </div>
+                        <Badge variant={
+                          completenessResult.warning_level === 'High' ? 'destructive' :
+                          completenessResult.warning_level === 'Medium' ? 'secondary' : 'default'
+                        } className="text-xs">
+                          {completenessResult.warning_level} Warning
+                        </Badge>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            completenessResult.completeness_score >= 80 ? 'bg-emerald-500' :
+                            completenessResult.completeness_score >= 60 ? 'bg-amber-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(completenessResult.completeness_score, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs text-muted-foreground">Confidence:</span>
+                        {confidenceBadge(completenessResult.confidence_rollup || 'Medium')}
+                        {completenessResult.site_visit_recommended && (
+                          <Badge variant="destructive" className="text-[10px]"><MapPin className="h-2.5 w-2.5 mr-0.5" /> Site Visit</Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Summary */}
+                  {completenessResult.completeness_summary && (
+                    <Card><CardContent className="px-3 py-2"><p className="text-xs text-muted-foreground">{completenessResult.completeness_summary}</p></CardContent></Card>
+                  )}
+
+                  {/* BLOCKING REASON - must be prominent */}
+                  {completenessResult.block_approval && (
+                    <Card className="border-red-500 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><AlertTriangle className="h-3.5 w-3.5" /> Review Blocked</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        <p className="text-xs font-medium">{completenessResult.blocking_reason}</p>
+                        {completenessResult.human_fix_required && (
+                          <Badge variant="destructive" className="text-[10px]">Human Fix Required</Badge>
+                        )}
+                        {completenessResult.override_allowed && (
+                          <div className="space-y-1.5 pt-1 border-t border-red-200">
+                            <p className="text-[10px] text-muted-foreground">Override is available. {completenessResult.override_reason_required ? 'A typed reason is required.' : ''}</p>
+                            {completenessResult.override_reason_required && (
+                              <Textarea
+                                value={overrideReason}
+                                onChange={e => setOverrideReason(e.target.value)}
+                                placeholder="Type override reason…"
+                                className="text-xs min-h-[40px]"
+                              />
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-7 border-red-300 text-red-700 hover:bg-red-50"
+                              disabled={completenessResult.override_reason_required && !overrideReason.trim()}
+                              onClick={() => {
+                                onUpdate({
+                                  override_reason: overrideReason || 'Manual override',
+                                } as any);
+                                toast({ title: 'Override applied', description: 'Review block overridden. Reason recorded.' });
+                              }}
+                            >
+                              Override Block
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Missing Scope Categories */}
+                  {completenessResult.missing_scope_categories?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><FileQuestion className="h-3.5 w-3.5" /> Missing Scope Categories ({completenessResult.missing_scope_categories.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        {completenessResult.missing_scope_categories.map((cat: any, i: number) => (
+                          <div key={i} className="border-l-2 border-primary/30 pl-2.5 space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-medium">{cat.category}</p>
+                              <Badge variant={cat.severity === 'High' ? 'destructive' : cat.severity === 'Medium' ? 'secondary' : 'outline'} className="text-[9px]">{cat.severity}</Badge>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">{cat.reason}</p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Mismatches */}
+                  {completenessResult.mismatches?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Evidence Mismatches ({completenessResult.mismatches.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        {completenessResult.mismatches.map((m: any, i: number) => (
+                          <div key={i} className="border-l-2 border-amber-400 pl-2.5 space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant={m.severity === 'High' ? 'destructive' : m.severity === 'Medium' ? 'secondary' : 'outline'} className="text-[9px]">{m.severity}</Badge>
+                            </div>
+                            <p className="text-xs"><strong>Evidence:</strong> {m.finding}</p>
+                            <p className="text-xs text-muted-foreground"><strong>Gap:</strong> {m.estimate_gap}</p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Site Visit */}
+                  {completenessResult.site_visit_recommended && completenessResult.site_visit_reason && (
+                    <Card className="border-red-500/50 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><MapPin className="h-3.5 w-3.5" /> Site Visit Recommended</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs">{completenessResult.site_visit_reason}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Queue preview */}
+                  {completenessResult.review_queue_items?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs">Queued Suggestions ({completenessResult.review_queue_items.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-1">
+                        {completenessResult.review_queue_items.slice(0, 5).map((item: any, i: number) => (
+                          <div key={i} className="text-xs flex items-center gap-1.5">
+                            <Badge variant="outline" className="text-[9px]">{item.suggestion_type}</Badge>
+                            <span className="truncate">{item.suggested_value || item.reason_for_suggestion}</span>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* No block - all clear */}
+                  {!completenessResult.block_approval && completenessResult.completeness_score >= 80 && (
+                    <Card className="border-emerald-300 bg-emerald-50">
+                      <CardContent className="px-3 py-3">
+                        <p className="text-xs flex items-center gap-1.5 text-emerald-800"><CheckCircle className="h-3.5 w-3.5" /> Estimate appears ready for review. No material gaps or blocks detected.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         {/* ═══ REVIEW QUEUE TAB ═══ */}
         <TabsContent value="queue" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
