@@ -121,12 +121,10 @@ export default function Dashboard() {
     t === 'Fix' ? 'Fix' : t === 'Recompute' ? 'Recompute' : t === 'Analyze' ? 'Analyze' : t === 'Review CostLib' ? 'Review' : 'Review';
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => navigate('/estimates/new')}><Plus className="h-3 w-3 mr-1" />New Estimate</Button>
-        </div>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold">Dashboard</h1>
+        <Button size="sm" onClick={() => navigate('/estimates/new')}><Plus className="h-3 w-3 mr-1" />New Estimate</Button>
       </div>
 
       {/* ACTION QUEUE */}
@@ -141,15 +139,16 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-2">
               {actions.slice(0, 12).map((a, i) => (
-                <div key={i} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
                   <Badge variant={severityColor(a.severity)} className="text-xs w-16 justify-center shrink-0">{a.severity}</Badge>
                   <Badge variant="outline" className="text-xs shrink-0">{a.type}</Badge>
-                  <span className="text-sm flex-1 truncate">{a.title}</span>
-                  {a.impactValue > 0 && <span className="text-xs text-muted-foreground font-mono">{fmt(a.impactValue)}</span>}
-                  {a.ageDays > 0 && <span className="text-xs text-muted-foreground">{a.ageDays}d</span>}
-                  <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => navigate(a.link)}>
-                    {actionLabel(a.actionType)}<ArrowRight className="h-3 w-3 ml-1" />
-                  </Button>
+                  <span className="text-sm flex-1 truncate w-full sm:w-auto">{a.title}</span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    {a.impactValue > 0 && <span className="text-xs text-muted-foreground font-mono">{fmt(a.impactValue)}</span>}
+                    <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => navigate(a.link)}>
+                      {actionLabel(a.actionType)}<ArrowRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -164,7 +163,7 @@ export default function Dashboard() {
             <Button key={w} size="sm" variant={kpiWindow === w ? 'default' : 'ghost'} className="h-6 text-xs px-2" onClick={() => setKpiWindow(w)}>{w}</Button>
           ))}
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
           <KPI title="Estimates Created" value={estCreated} />
           <KPI title="Estimates Sent" value={estSent} />
           <KPI title="Conversion %" value={`${conversionRate}%`} />

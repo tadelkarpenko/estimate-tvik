@@ -1501,7 +1501,7 @@ export default function NewEstimate() {
 
       {/* AI Intake Assistant Sheet */}
       <Sheet open={intakeOpen} onOpenChange={setIntakeOpen}>
-        <SheetContent side="right" className="w-[420px] sm:w-[480px] p-0">
+        <SheetContent side="right" className="w-full sm:w-[420px] md:w-[480px] p-0">
           <AIIntakePanel
             estimate={form}
             estimateDbId={estimateDbId}
