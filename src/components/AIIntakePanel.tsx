@@ -1172,7 +1172,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       }
 
       // Reapproval: downgrade status if needed
-      if (writePlan.requires_reapproval && (estimate.status === 'Approved' || estimate.status === 'Sent')) {
+      if (writePlan.requires_reapproval && (['Approved', 'Sent'] as string[]).includes(estimate.status || '')) {
         updates.status = 'Ready for Review' as any;
       }
 
