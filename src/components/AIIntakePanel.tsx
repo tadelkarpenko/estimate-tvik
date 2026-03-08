@@ -96,7 +96,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const speechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   const startRecording = useCallback(() => {
-    if (!speechSupported || !selectedArea) return;
+    if (!speechSupported || !selectedAreaId) return;
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
