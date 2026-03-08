@@ -1010,6 +1010,9 @@ export default function NewEstimate() {
                 <Briefcase className="mr-1 h-4 w-4" />View Contract
               </Button>
             )}
+            {form.status === 'Accepted' && estimateDbId && (
+              <JobButton estimateDbId={estimateDbId} estimate={form as Estimate} />
+            )}
           </div>
         </div>
       )}
