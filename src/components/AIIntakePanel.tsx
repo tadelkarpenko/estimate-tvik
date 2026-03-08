@@ -291,11 +291,11 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
             <CardContent className="px-3 pb-3">
               {estimateDbId ? (
                 <MediaUploader
-                  entityId={estimateDbId}
-                  entityType="estimates"
-                  onUploadComplete={() => {
+                  folder="estimates"
+                  onUploaded={async (url, caption) => {
+                    // The parent page handles saving media records
                     onMediaChange();
-                    onUpdate({ photo_count: media.length + 1 });
+                    onUpdate({ photo_count: (estimate.photo_count ?? 0) + 1 });
                   }}
                 />
               ) : (
