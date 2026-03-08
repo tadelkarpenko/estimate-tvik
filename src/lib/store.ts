@@ -40,6 +40,8 @@ export const saveEstimate = async (est: Estimate): Promise<void> => {
 };
 
 export const deleteEstimate = async (estimateId: string): Promise<void> => {
+  // Clean up orphaned cost_audits (no FK cascade since estimate_id is plain text)
+  await supabase.from('cost_audits').delete().eq('estimate_id', estimateId);
   const { error } = await supabase.from('estimates').delete().eq('estimate_id', estimateId);
   if (error) throw error;
 };
