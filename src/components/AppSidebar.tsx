@@ -31,10 +31,10 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarContent>
         {!collapsed && (
-          <div className="px-4 py-5">
+          <button onClick={() => window.location.reload()} className="px-4 py-5 text-left w-full hover:opacity-80 transition-opacity">
             <h1 className="text-lg font-bold text-sidebar-primary">TVIK LLC</h1>
             <p className="text-xs text-sidebar-foreground/60">Estimator</p>
-          </div>
+          </button>
         )}
         <SidebarGroup>
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
