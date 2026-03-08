@@ -3038,6 +3038,79 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                         </CardContent>
                       </Card>
                     )}
+
+                    {/* ─── Post-Write Health Recheck (Patch 11) ─── */}
+                    {(writePlan.apply_status === 'applied' || executionResult) && (
+                      <Card className="border-dashed">
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs flex items-center gap-1.5">
+                            <BarChart3 className="h-3.5 w-3.5" /> Post-Write Health Recheck
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-xs h-7"
+                            disabled={recheckLoading}
+                            onClick={runRecheck}
+                          >
+                            {recheckLoading
+                              ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" /> Rechecking…</>
+                              : <><RefreshCw className="h-3 w-3 mr-1" /> Run Post-Write Health Recheck</>}
+                          </Button>
+
+                          {recheckResult && (
+                            <div className="space-y-2 mt-2">
+                              <div className={`rounded p-2 text-xs ${
+                                recheckResult.health_status === 'Good' ? 'bg-emerald-50 border border-emerald-200' :
+                                recheckResult.health_status === 'Review Needed' ? 'bg-amber-50 border border-amber-200' :
+                                'bg-red-50 border border-red-200'
+                              }`}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium">Health: {recheckResult.health_status}</span>
+                                  <Badge variant="outline" className="text-[9px]">{recheckResult.completeness_score}%</Badge>
+                                </div>
+                                <p className="text-muted-foreground">{recheckResult.resolution_summary}</p>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                                <div>Warning: <Badge variant={recheckResult.warning_level === 'High' ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.warning_level}</Badge></div>
+                                <div>Confidence: <Badge variant="outline" className="text-[9px]">{recheckResult.confidence_rollup}</Badge></div>
+                                <div>Blocked: <Badge variant={recheckResult.block_approval ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.block_approval ? 'Yes' : 'No'}</Badge></div>
+                                <div>Site Visit: <Badge variant={recheckResult.site_visit_recommended ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.site_visit_recommended ? 'Yes' : 'No'}</Badge></div>
+                                <div>Fix Required: <Badge variant={recheckResult.human_fix_required ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.human_fix_required ? 'Yes' : 'No'}</Badge></div>
+                                <div>Queue Items: <strong>{recheckResult.queue_items_created}</strong></div>
+                              </div>
+
+                              {recheckResult.missing_scope_categories.length > 0 && (
+                                <div className="text-[10px]">
+                                  <p className="font-medium mb-0.5">Missing Categories:</p>
+                                  {recheckResult.missing_scope_categories.map((c, i) => (
+                                    <Badge key={i} variant="outline" className="text-[9px] mr-1 mb-0.5">{c}</Badge>
+                                  ))}
+                                </div>
+                              )}
+
+                              {recheckResult.mismatches.length > 0 && (
+                                <div className="text-[10px]">
+                                  <p className="font-medium mb-0.5">Remaining Issues:</p>
+                                  {recheckResult.mismatches.map((m, i) => (
+                                    <p key={i} className="text-muted-foreground">• {m}</p>
+                                  ))}
+                                </div>
+                              )}
+
+                              {recheckResult.blocking_reason && (
+                                <div className="text-[10px] text-destructive">
+                                  <p className="font-medium">Block Reason: {recheckResult.blocking_reason}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
                   </div>
                 );
               })()}
