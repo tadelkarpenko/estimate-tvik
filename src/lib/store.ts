@@ -414,6 +414,7 @@ function rowToEstimate(r: any): Estimate {
     ai_revision_review_status: r.ai_revision_review_status || 'No Review Needed',
     estimate_site_visit_recommended: r.estimate_site_visit_recommended ?? false,
     estimate_confidence_rollup: r.estimate_confidence_rollup || 'Medium',
+    estimate_completeness_summary: r.estimate_completeness_summary || '',
   } as Estimate;
 }
 
@@ -482,6 +483,7 @@ function estimateToRow(est: Estimate, userId: string) {
     ai_revision_review_status: est.ai_revision_review_status || 'No Review Needed',
     estimate_site_visit_recommended: est.estimate_site_visit_recommended ?? false,
     estimate_confidence_rollup: est.estimate_confidence_rollup || 'Medium',
+    estimate_completeness_summary: est.estimate_completeness_summary || '',
   };
 }
 
