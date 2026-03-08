@@ -2134,7 +2134,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                       if (selectedArea) updateArea('uploaded_photo_count', selectedArea.uploaded_photo_count + 1);
                     }} />
                   ) : (
-                    <p className="text-xs text-muted-foreground">Save estimate first.</p>
+                    <Button size="sm" variant="outline" className="w-full text-xs" onClick={async () => { await ensureSaved(); }}>
+                      <Camera className="h-3 w-3 mr-1" /> Save & Enable Upload
+                    </Button>
                   )}
                   {media.length > 0 && (
                     <div className="mt-2 grid grid-cols-4 gap-1.5">
