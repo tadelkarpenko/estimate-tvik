@@ -873,6 +873,211 @@ Produce only the highest-value clarification questions. Do not repeat already-an
 
       return new Response(JSON.stringify({ structured: miStructured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    } else if (action === "completeness_check") {
+      // Patch 8: Estimate Completeness Check control block
+      const completenessSystemPrompt = `You are TVIK LLC Completeness Check AI — a structured construction estimate control block.
+
+Your job is to compare the current structured intake findings against the current estimate-support content, identify missing categories and mismatches, assign a warning level, and decide whether review should be blocked.
+
+CRITICAL RULES:
+- You are a STRUCTURED CONTROL EVALUATOR, not a chatbot.
+- Compare evidence from merged intake against what the estimate currently contains.
+- Identify likely missing scope categories.
+- Identify mismatches between findings and estimate content.
+- Assign warning level (Low, Medium, High).
+- Decide whether to block approval.
+- Never rewrite the estimate.
+- Never finalize pricing or quantities.
+- Never approve estimates.
+
+THREE-LAYER COMPLETENESS MODEL:
+
+Layer 1 — Rule-based scope category completeness:
+Check likely categories: demo, protection, disposal, patch/paint, electrical corrections, plumbing corrections, hidden conditions, permit/fee consideration.
+
+Layer 2 — Evidence-to-estimate mismatch:
+Compare merged visible facts vs line items, merged risks vs risk notes, detected trades vs represented trades, unresolved verification needs vs current exclusions/allowances/assumptions, site-visit signals vs current estimate readiness.
+
+Layer 3 — Confidence/escalation:
+If evidence is incomplete, conflicting, or low-confidence: lower readiness, raise warning level, recommend site visit, block review only when material.
+
+BLOCKING RULES:
+- block_approval = true ONLY for material issues: major missing scope categories, unresolved hidden-condition risk, severe mismatches, low confidence with multi-trade scope, strong site-visit dependency.
+- Set human_fix_required = true when blocked.
+- override_allowed = true for most blocks. override_reason_required = true for High warning cases.
+
+COMPLETENESS SCORE:
+- 0-40: Critical gaps, block review
+- 41-60: Major gaps, likely block
+- 61-79: Moderate gaps, warn but may not block
+- 80-100: Mostly complete, Low warning
+
+Call the extract_completeness_check function with the structured output.`;
+
+      const completenessUserPrompt = `Compare the current structured intake findings against the estimate content and produce a completeness control result.
+
+Area: ${data.area_name || 'All areas'}
+Project type: ${data.project_type || 'Unknown'}
+Project category: ${data.project_category || 'Unknown'}
+Current status: ${data.current_status || 'Draft'}
+Current confidence: ${data.current_confidence || 'Unknown'}
+
+=== MERGED SCOPE SUMMARY ===
+${data.merged_scope_summary || 'Not available'}
+
+=== MERGED VISIBLE FACTS ===
+${data.merged_visible_facts || 'Not available'}
+
+=== MERGED INFERENCES ===
+${data.merged_inferences || 'Not available'}
+
+=== MERGED NEEDS VERIFICATION ===
+${data.merged_needs_verification || 'Not available'}
+
+=== MERGED RISKS ===
+${data.merged_risks || 'Not available'}
+
+=== MERGED TRADE DETECTION ===
+${data.merged_trade_detection || 'Not available'}
+
+=== CURRENT LINE ITEMS ===
+${data.current_line_items || 'None'}
+
+=== CURRENT EXCLUSIONS ===
+${data.current_exclusions || 'None'}
+
+=== CURRENT ALLOWANCES ===
+${data.current_allowances || 'None'}
+
+=== CURRENT ASSUMPTIONS ===
+${data.current_assumptions || 'None'}
+
+=== CURRENT RISK NOTES ===
+${data.current_risk_notes || 'None'}
+
+=== CURRENT SITE VISIT RECOMMENDATION ===
+${data.current_site_visit_recommended ? 'Yes' : 'No'}
+
+Evaluate completeness, identify gaps and mismatches, assign warning level, and determine if review should be blocked.`;
+
+      const completenessToolBody = {
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: completenessSystemPrompt },
+          { role: "user", content: completenessUserPrompt },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_completeness_check",
+              description: "Extract structured completeness check results comparing intake evidence to estimate content.",
+              parameters: {
+                type: "object",
+                properties: {
+                  completeness_score: { type: "number", description: "0-100 score of estimate completeness based on evidence" },
+                  missing_scope_categories: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        category: { type: "string", description: "Missing scope category name" },
+                        severity: { type: "string", enum: ["Low", "Medium", "High"] },
+                        reason: { type: "string", description: "Why this category appears missing" }
+                      },
+                      required: ["category", "severity", "reason"],
+                      additionalProperties: false
+                    },
+                    description: "List of likely missing scope categories"
+                  },
+                  mismatches: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        finding: { type: "string", description: "What the evidence shows" },
+                        estimate_gap: { type: "string", description: "What the estimate is missing or has wrong" },
+                        severity: { type: "string", enum: ["Low", "Medium", "High"] }
+                      },
+                      required: ["finding", "estimate_gap", "severity"],
+                      additionalProperties: false
+                    },
+                    description: "Mismatches between evidence and current estimate content"
+                  },
+                  warning_level: { type: "string", enum: ["Low", "Medium", "High"] },
+                  block_approval: { type: "boolean", description: "True if material issues make review/approval unsafe" },
+                  blocking_reason: { type: "string", description: "Why review is blocked. Empty if not blocked." },
+                  human_fix_required: { type: "boolean" },
+                  override_allowed: { type: "boolean" },
+                  override_reason_required: { type: "boolean" },
+                  site_visit_recommended: { type: "boolean" },
+                  site_visit_reason: { type: "string" },
+                  confidence_rollup: { type: "string", enum: ["High", "Medium", "Low"] },
+                  completeness_summary: { type: "string", description: "2-3 sentence summary of completeness state" },
+                  review_queue_items: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        suggestion_type: { type: "string", enum: ["missing_info", "risk_note", "trade_detection", "site_visit", "allowance", "exclusion", "assumption", "internal_note"] },
+                        suggested_value: { type: "string" },
+                        apply_target: { type: "string" },
+                        confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                        evidence_summary: { type: "string" },
+                        reason_for_suggestion: { type: "string" }
+                      },
+                      required: ["suggestion_type", "suggested_value", "confidence", "evidence_summary", "reason_for_suggestion"],
+                      additionalProperties: false
+                    },
+                    description: "Queue items for material issues worth tracking"
+                  }
+                },
+                required: ["completeness_score", "missing_scope_categories", "mismatches", "warning_level", "block_approval", "blocking_reason", "human_fix_required", "override_allowed", "override_reason_required", "site_visit_recommended", "confidence_rollup", "completeness_summary", "review_queue_items"],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "extract_completeness_check" } },
+      };
+
+      const ccResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(completenessToolBody),
+      });
+
+      if (!ccResp.ok) {
+        const status = ccResp.status;
+        if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("AI gateway error:", status, await ccResp.text());
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const ccResult = await ccResp.json();
+      const ccToolCall = ccResult.choices?.[0]?.message?.tool_calls?.[0];
+      let ccStructured: any = {};
+      if (ccToolCall?.function?.arguments) {
+        try {
+          ccStructured = typeof ccToolCall.function.arguments === 'string'
+            ? JSON.parse(ccToolCall.function.arguments)
+            : ccToolCall.function.arguments;
+        } catch {
+          ccStructured = { completeness_score: 0, missing_scope_categories: [], mismatches: [], warning_level: "High", block_approval: true, blocking_reason: "Failed to parse", human_fix_required: true, override_allowed: true, override_reason_required: false, site_visit_recommended: true, confidence_rollup: "Low", completeness_summary: "Analysis parsing failed", review_queue_items: [] };
+        }
+      } else {
+        const content = ccResult.choices?.[0]?.message?.content || "";
+        try { ccStructured = JSON.parse(content); } catch {
+          ccStructured = { completeness_score: 0, missing_scope_categories: [], mismatches: [], warning_level: "High", block_approval: true, blocking_reason: "No structured output", human_fix_required: true, override_allowed: true, override_reason_required: false, site_visit_recommended: true, confidence_rollup: "Low", completeness_summary: content || "No analysis", review_queue_items: [] };
+        }
+      }
+
+      return new Response(JSON.stringify({ structured: ccStructured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else if (action === "intake") {
       // AI Intake Assistant - structured analysis
       const workflow = data.workflow || "intake_fresh";
