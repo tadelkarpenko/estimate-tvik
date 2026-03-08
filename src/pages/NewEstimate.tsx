@@ -754,9 +754,22 @@ export default function NewEstimate() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{isEdit ? `Edit ${form.estimate_id}` : 'New Estimate'}</h1>
-        {form.estimate_id && <Badge>{form.status}</Badge>}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold">{isEdit ? `Edit ${form.estimate_id}` : 'New Estimate'}</h1>
+          {form.estimate_id && <Badge>{form.status}</Badge>}
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => setIntakeOpen(true)}
+          className="border-primary/30 hover:bg-primary/5 gap-2 h-9 px-3"
+        >
+          <Sparkles className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium">AI Intake Assistant</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+            {form.ai_apply_status === 'Draft Applied' ? 'Good' : form.ai_apply_status === 'Reviewed' ? 'Review Needed' : 'Draft Only'}
+          </Badge>
+        </Button>
       </div>
 
       {/* Form Fields */}
@@ -891,9 +904,6 @@ export default function NewEstimate() {
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={saveDraft}>Save Draft</Button>
         <Button onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
-        <Button variant="outline" onClick={() => setIntakeOpen(true)} className="border-primary/30">
-          <ClipboardList className="mr-1 h-4 w-4" />AI Intake Assistant
-        </Button>
         {form.subtotal! > 0 && (
           <>
             <Button variant="outline" onClick={() => {
