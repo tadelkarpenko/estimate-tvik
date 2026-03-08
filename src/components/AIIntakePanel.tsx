@@ -816,7 +816,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMergeAnalysisLoading(false);
     }
-  }, [estimateDbId, selectedArea, estimate, isApproved, toast, onUpdate]);
+  }, [estimateDbId, ensureSaved, selectedArea, estimate, isApproved, toast, onUpdate]);
 
   // ─── Missing Info Questions (Patch 7) ───
   const generateMissingInfoQuestions = useCallback(async () => {
