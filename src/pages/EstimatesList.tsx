@@ -32,7 +32,7 @@ export default function EstimatesList() {
 
   const filtered = estimates
     .filter(e => !search || `${e.estimate_id} ${e.project_name} ${e.client_name} ${e.city}`.toLowerCase().includes(search.toLowerCase()))
-    .filter(e => typeFilter === 'all' || e.project_type === typeFilter)
+    .filter(e => typeFilter === 'all' || e.project_category === typeFilter || e.project_type === typeFilter)
     .filter(e => statusFilter === 'all' || e.status === statusFilter)
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
