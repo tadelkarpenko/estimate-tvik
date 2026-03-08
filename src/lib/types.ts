@@ -91,6 +91,10 @@ export interface Estimate {
   zip: string;
   project_name: string;
   project_type: ProjectType;
+  // New 3-field classification
+  project_category: ProjectCategory;
+  scope_class: ScopeClass;
+  job_complexity: JobComplexity;
   sqft: number;
   fixture_count: number;
   labor_hours: number;
