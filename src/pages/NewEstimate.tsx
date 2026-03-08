@@ -762,11 +762,12 @@ export default function NewEstimate() {
         <Button
           variant="outline"
           onClick={() => setIntakeOpen(true)}
-          className="border-primary/30 hover:bg-primary/5 gap-2 h-9 px-3"
+          className="border-primary/30 hover:bg-primary/5 gap-1.5 sm:gap-2 h-10 sm:h-9 px-3 min-w-0"
         >
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium">AI Intake Assistant</span>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-sm font-medium hidden sm:inline">AI Intake Assistant</span>
+          <span className="text-sm font-medium sm:hidden">AI Intake</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 shrink-0">
             {form.ai_apply_status === 'Draft Applied' ? 'Good' : form.ai_apply_status === 'Reviewed' ? 'Review Needed' : 'Draft Only'}
           </Badge>
         </Button>
