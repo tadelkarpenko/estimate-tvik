@@ -13,6 +13,7 @@ import CostLibraryPage from "./pages/CostLibraryPage";
 import RiskLibraryPage from "./pages/RiskLibraryPage";
 import CostAuditPage from "./pages/CostAuditPage";
 import AdminPage from "./pages/AdminPage";
+import ReviewQueuePage from "./pages/ReviewQueuePage";
 import ContractsList from "./pages/ContractsList";
 import ContractDetail from "./pages/ContractDetail";
 import JobsList from "./pages/JobsList";
