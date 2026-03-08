@@ -293,10 +293,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Initial Intake Analysis (Patch 3) ───
   const analyzeInitialIntake = useCallback(async () => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
+    const dbId = await ensureSaved();
+    if (!dbId) return;
     if (isApproved) {
       toast({ title: 'Estimate is approved', description: 'Initial intake is advisory only on approved estimates.', variant: 'destructive' });
     }
