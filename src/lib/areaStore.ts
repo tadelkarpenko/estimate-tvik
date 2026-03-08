@@ -131,6 +131,18 @@ export const saveEstimateArea = async (area: EstimateArea): Promise<string> => {
     site_visit_reason: area.site_visit_reason,
     revision_status: area.revision_status,
     latest_ai_summary: area.latest_ai_summary,
+    merged_scope_summary: area.merged_scope_summary,
+    merged_visible_facts: area.merged_visible_facts,
+    merged_inferences: area.merged_inferences,
+    merged_needs_verification: area.merged_needs_verification,
+    merged_risks: area.merged_risks,
+    merged_trade_detection: area.merged_trade_detection,
+    merged_missing_questions: area.merged_missing_questions,
+    merged_confidence: area.merged_confidence,
+    merged_last_updated_at: area.merged_last_updated_at,
+    merged_analysis_status: area.merged_analysis_status,
+    latest_merge_batch_id: area.latest_merge_batch_id,
+    conflict_summary: area.conflict_summary,
     updated_at: new Date().toISOString(),
   };
 
