@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getEstimates, getCostAudits, getCostLibrary, initStore } from '@/lib/store';
+import { PWAInstallGuide } from '@/components/PWAInstallGuide';
 import { supabase } from '@/integrations/supabase/client';
 import type { Estimate, CostAudit, CostLibraryItem } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -127,6 +128,8 @@ export default function Dashboard() {
         <h1 className="text-xl sm:text-2xl font-bold">Dashboard</h1>
         <Button size="sm" onClick={() => navigate('/estimates/new')}><Plus className="h-3 w-3 mr-1" />New Estimate</Button>
       </div>
+
+      <PWAInstallGuide />
 
       {/* ACTION QUEUE */}
       {actions.length > 0 && (
