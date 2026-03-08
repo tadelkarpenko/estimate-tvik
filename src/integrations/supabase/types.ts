@@ -998,6 +998,10 @@ export type Database = {
           missing_scope_categories: string
           override_allowed: boolean
           override_reason_required: boolean
+          prior_health_check_id: string
+          related_execution_id: string
+          related_write_plan_id: string
+          resolution_summary: string
           site_visit_recommended: boolean
           user_id: string
           warning_level: string
@@ -1019,6 +1023,10 @@ export type Database = {
           missing_scope_categories?: string
           override_allowed?: boolean
           override_reason_required?: boolean
+          prior_health_check_id?: string
+          related_execution_id?: string
+          related_write_plan_id?: string
+          resolution_summary?: string
           site_visit_recommended?: boolean
           user_id: string
           warning_level?: string
@@ -1040,6 +1048,10 @@ export type Database = {
           missing_scope_categories?: string
           override_allowed?: boolean
           override_reason_required?: boolean
+          prior_health_check_id?: string
+          related_execution_id?: string
+          related_write_plan_id?: string
+          resolution_summary?: string
           site_visit_recommended?: boolean
           user_id?: string
           warning_level?: string

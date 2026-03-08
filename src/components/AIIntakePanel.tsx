@@ -31,6 +31,7 @@ import {
 import { saveHealthCheck } from '@/lib/healthCheckStore';
 import { generateWritePlan, saveWritePlan, updateWritePlanStatus, type WritePlan, type WritePlanFieldUpdate, type WritePlanLineItem, type WritePlanAuditEntry } from '@/lib/writePlanStore';
 import { executeWriteback, type ExecutionResult } from '@/lib/writebackEngine';
+import { runPostWriteRecheck, type PostWriteRecheckResult } from '@/lib/postWriteRecheckEngine';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
@@ -127,6 +128,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [writePlan, setWritePlan] = useState<WritePlan | null>(null);
   const [writePlanLoading, setWritePlanLoading] = useState(false);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
+  const [recheckResult, setRecheckResult] = useState<PostWriteRecheckResult | null>(null);
+  const [recheckLoading, setRecheckLoading] = useState(false);
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
@@ -1193,6 +1196,81 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       setWritePlanLoading(false);
     }
   }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, toast]);
+
+  // ─── Post-Write Health Recheck (Patch 11) ───
+  const runRecheck = useCallback(async () => {
+    if (!estimateDbId) return;
+    setRecheckLoading(true);
+    setRecheckResult(null);
+    try {
+      // Get latest health check for prior state
+      const { data: priorChecks } = await (await import('@/integrations/supabase/client')).supabase
+        .from('estimate_health_checks')
+        .select('*')
+        .eq('estimate_id', estimateDbId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      const prior = priorChecks?.[0];
+
+      // Get line items count
+      const { count } = await (await import('@/integrations/supabase/client')).supabase
+        .from('estimate_line_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('estimate_id', estimateDbId);
+
+      const result = await runPostWriteRecheck({
+        estimate_id: estimateDbId,
+        estimate_version: estimate.version || 'v1.0',
+        current_status: estimate.status || 'Draft',
+        related_execution_id: executionResult?.execution_id || '',
+        related_write_plan_id: writePlan?.write_plan_id || '',
+        current_line_items_count: count || 0,
+        current_exclusions: estimate.suggested_exclusions || '',
+        current_allowances: estimate.suggested_allowances || '',
+        current_assumptions: estimate.suggested_assumptions || '',
+        current_risk_notes: estimate.possible_hidden_risks || '',
+        current_missing_info: estimate.missing_info_questions || '',
+        merged_scope_summary: (estimate as any).merged_scope_summary || '',
+        merged_visible_facts: (estimate as any).merged_visible_facts || '',
+        merged_inferences: (estimate as any).merged_inferences || '',
+        merged_needs_verification: (estimate as any).merged_needs_verification || '',
+        merged_risks: (estimate as any).merged_risks || '',
+        merged_trade_detection: (estimate as any).merged_trade_detection || '',
+        current_confidence: estimate.estimate_confidence_rollup || 'Medium',
+        prior_health_check_id: prior?.id || '',
+        prior_blocking_reason: prior?.blocking_reason || '',
+        prior_completeness_score: Number(prior?.completeness_score || 0),
+        site_visit_required: estimate.site_visit_required || false,
+      });
+      setRecheckResult(result);
+
+      // Sync local estimate state
+      onUpdate({
+        ai_estimate_health_status: result.health_status as any,
+        estimate_site_visit_recommended: result.site_visit_recommended,
+        estimate_confidence_rollup: result.confidence_rollup as any,
+        completeness_score: result.completeness_score,
+        review_blocked: result.block_approval,
+        review_block_reason: result.blocking_reason,
+        override_required: result.human_fix_required,
+      } as any);
+
+      // Refresh suggestions if queue items were created
+      if (result.queue_items_created > 0) {
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({
+        title: `Health: ${result.health_status}`,
+        description: `Score: ${result.completeness_score}%. ${result.resolution_summary}`,
+      });
+    } catch (e: any) {
+      toast({ title: 'Recheck failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setRecheckLoading(false);
+    }
+  }, [estimateDbId, estimate, executionResult, writePlan, onUpdate, toast]);
 
   // ─── Apply Approved Suggestions (legacy) ───
   const applyApprovedSuggestions = async () => {
@@ -2957,6 +3035,79 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                           <p className="text-xs flex items-center gap-1.5 text-emerald-800">
                             <CheckCircle className="h-3.5 w-3.5" /> Write plan applied successfully. {audits.length} audit entries created.
                           </p>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* ─── Post-Write Health Recheck (Patch 11) ─── */}
+                    {(writePlan.apply_status === 'applied' || executionResult) && (
+                      <Card className="border-dashed">
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs flex items-center gap-1.5">
+                            <BarChart3 className="h-3.5 w-3.5" /> Post-Write Health Recheck
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-xs h-7"
+                            disabled={recheckLoading}
+                            onClick={runRecheck}
+                          >
+                            {recheckLoading
+                              ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" /> Rechecking…</>
+                              : <><RefreshCw className="h-3 w-3 mr-1" /> Run Post-Write Health Recheck</>}
+                          </Button>
+
+                          {recheckResult && (
+                            <div className="space-y-2 mt-2">
+                              <div className={`rounded p-2 text-xs ${
+                                recheckResult.health_status === 'Good' ? 'bg-emerald-50 border border-emerald-200' :
+                                recheckResult.health_status === 'Review Needed' ? 'bg-amber-50 border border-amber-200' :
+                                'bg-red-50 border border-red-200'
+                              }`}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium">Health: {recheckResult.health_status}</span>
+                                  <Badge variant="outline" className="text-[9px]">{recheckResult.completeness_score}%</Badge>
+                                </div>
+                                <p className="text-muted-foreground">{recheckResult.resolution_summary}</p>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                                <div>Warning: <Badge variant={recheckResult.warning_level === 'High' ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.warning_level}</Badge></div>
+                                <div>Confidence: <Badge variant="outline" className="text-[9px]">{recheckResult.confidence_rollup}</Badge></div>
+                                <div>Blocked: <Badge variant={recheckResult.block_approval ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.block_approval ? 'Yes' : 'No'}</Badge></div>
+                                <div>Site Visit: <Badge variant={recheckResult.site_visit_recommended ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.site_visit_recommended ? 'Yes' : 'No'}</Badge></div>
+                                <div>Fix Required: <Badge variant={recheckResult.human_fix_required ? 'destructive' : 'outline'} className="text-[9px]">{recheckResult.human_fix_required ? 'Yes' : 'No'}</Badge></div>
+                                <div>Queue Items: <strong>{recheckResult.queue_items_created}</strong></div>
+                              </div>
+
+                              {recheckResult.missing_scope_categories.length > 0 && (
+                                <div className="text-[10px]">
+                                  <p className="font-medium mb-0.5">Missing Categories:</p>
+                                  {recheckResult.missing_scope_categories.map((c, i) => (
+                                    <Badge key={i} variant="outline" className="text-[9px] mr-1 mb-0.5">{c}</Badge>
+                                  ))}
+                                </div>
+                              )}
+
+                              {recheckResult.mismatches.length > 0 && (
+                                <div className="text-[10px]">
+                                  <p className="font-medium mb-0.5">Remaining Issues:</p>
+                                  {recheckResult.mismatches.map((m, i) => (
+                                    <p key={i} className="text-muted-foreground">• {m}</p>
+                                  ))}
+                                </div>
+                              )}
+
+                              {recheckResult.blocking_reason && (
+                                <div className="text-[10px] text-destructive">
+                                  <p className="font-medium">Block Reason: {recheckResult.blocking_reason}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     )}
