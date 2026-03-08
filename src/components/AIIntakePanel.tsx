@@ -137,7 +137,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     recognitionRef.current = recognition;
     recognition.start();
     setIsRecording(true);
-  }, [speechSupported, selectedArea, selectedAreaId, toast]);
+  }, [speechSupported, selectedAreaId, toast]);
 
   const stopRecording = useCallback(() => {
     if (recognitionRef.current) {
