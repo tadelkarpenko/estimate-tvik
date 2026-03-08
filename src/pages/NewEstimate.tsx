@@ -59,6 +59,13 @@ const defaultEst: Partial<Estimate> = {
   crew_size: 2, hours_per_day: 8, subtotal_labor_hours: 0, estimated_duration_days: 0,
   internal_notes: '', public_notes: '',
   clarification_answers_json: '[]', ai_suggestions_last_json: '[]',
+  // AI Intake defaults
+  ai_intake_summary: '', photo_analysis_summary: '', visible_findings: '',
+  likely_scope_items: '', possible_hidden_risks: '', missing_info_questions: '',
+  suggested_allowances: '', suggested_exclusions: '', suggested_assumptions: '',
+  suggested_line_items: '', ai_detected_trades: '', site_visit_required: false,
+  ai_scope_confidence: 'Medium', photo_count: 0, intake_last_updated_at: null,
+  revision_needed_warning: false, ai_apply_status: 'Not Applied',
 } as any;
 
 const FINISH_MULTS: Record<FinishLevel, number> = { Basic: 1.00, Mid: 1.15, High: 1.30, Luxury: 1.55 };
