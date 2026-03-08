@@ -929,10 +929,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Completeness Check (Patch 8) ───
   const runCompletenessCheck = useCallback(async () => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
+    const dbId = await ensureSaved();
+    if (!dbId) return;
 
     setCompletenessLoading(true);
     const batchId = crypto.randomUUID();
