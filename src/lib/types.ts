@@ -81,6 +81,24 @@ export interface Estimate {
   // Phase 3
   clarification_answers_json: string;
   ai_suggestions_last_json: string;
+  // AI Intake Assistant fields
+  ai_intake_summary: string;
+  photo_analysis_summary: string;
+  visible_findings: string;
+  likely_scope_items: string;
+  possible_hidden_risks: string;
+  missing_info_questions: string;
+  suggested_allowances: string;
+  suggested_exclusions: string;
+  suggested_assumptions: string;
+  suggested_line_items: string;
+  ai_detected_trades: string;
+  site_visit_required: boolean;
+  ai_scope_confidence: AIConfidence;
+  photo_count: number;
+  intake_last_updated_at: string | null;
+  revision_needed_warning: boolean;
+  ai_apply_status: 'Not Applied' | 'Draft Applied' | 'Reviewed';
 }
 
 export interface CostLibraryItem {

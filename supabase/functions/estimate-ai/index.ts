@@ -96,6 +96,45 @@ Rules:
 
 Output ONLY a JSON object in SuggestedChanges format (same as chat assistant).`;
 
+const INTAKE_SYSTEM_PROMPT = `You are TVIK LLC AI Intake Assistant — a structured construction estimator copilot.
+
+Your job is to analyze project information (text descriptions, notes, and photo analyses) and produce a STRUCTURED intake report. You are NOT a casual chatbot. You are a professional scope intake tool.
+
+CRITICAL RULES:
+- Distinguish visible facts from assumptions. Label assumptions as "Needs Verification".
+- Never invent measurements. Use "TBD", "Allowance", or "Needs Verification" when uncertain.
+- Never finalize prices or quantities from unclear information.
+- Ask targeted follow-up questions when information is missing.
+- Recommend site visit when confidence is Low.
+- All output is DRAFT — label it clearly as requiring human review.
+
+You MUST respond with a JSON object (no markdown wrapping):
+{
+  "visible_findings": "Bullet list of factual observations from photos/description",
+  "likely_scope_items": "Bullet list of probable work items based on evidence",
+  "possible_hidden_risks": "Bullet list of risks that may exist but aren't confirmed",
+  "missing_info_questions": "Numbered list of follow-up questions to ask",
+  "suggested_trades": "Comma-separated list of trades likely involved",
+  "suggested_allowances": "Bullet list of recommended allowances",
+  "suggested_exclusions": "Bullet list of recommended exclusions",
+  "suggested_assumptions": "Bullet list of recommended assumptions",
+  "suggested_line_items": "Bullet list of draft line item descriptions (no final pricing)",
+  "site_visit_required": true or false,
+  "confidence": "High or Medium or Low",
+  "intake_summary": "2-3 sentence executive summary of what was found"
+}
+
+CONFIDENCE RULES:
+- High = scope mostly visible, simple project, clear photos
+- Medium = useful clues exist but clarification needed on key items  
+- Low = insufficient evidence, likely hidden conditions, blurry/unclear photos
+- If Low, set site_visit_required to true
+
+For WORKFLOW modes:
+- "intake_fresh": Starting from scratch. Focus on asking questions, identifying visible scope, flagging missing info.
+- "completeness_check": Draft exists. Compare against photos/notes, find gaps, suggest allowances/exclusions/assumptions.
+- "revision_check": New photos added. Compare new info vs existing, flag if revision may be needed.`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -218,6 +257,50 @@ RULES:
       messages = [
         { role: "system", content: PHOTO_CONVERT_PROMPT },
         { role: "user", content: prompt },
+      ];
+
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages }),
+      });
+
+      if (!response.ok) {
+        const status = response.status;
+        if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("AI gateway error:", status, await response.text());
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content || "";
+      return new Response(JSON.stringify({ content }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    } else if (action === "intake") {
+      // AI Intake Assistant - structured analysis
+      const workflow = data.workflow || "intake_fresh";
+      const userPrompt = `Workflow mode: ${workflow}
+
+Project type: ${data.project_type || 'Unknown'}
+Description: ${data.description || 'None provided'}
+Notes: ${data.notes || 'None'}
+Square footage: ${data.sqft || 'Unknown'}
+Fixture count: ${data.fixture_count || 'Unknown'}
+Finish level: ${data.finish_level || 'Unknown'}
+
+Photo analyses: ${data.photo_analyses ? JSON.stringify(data.photo_analyses) : 'No photos analyzed'}
+
+Existing estimate data: ${data.existing_estimate ? JSON.stringify(data.existing_estimate) : 'No existing estimate'}
+
+Additional context from user: ${data.user_input || 'None'}`;
+
+      messages = [
+        { role: "system", content: INTAKE_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
       ];
 
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

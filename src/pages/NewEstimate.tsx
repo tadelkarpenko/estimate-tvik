@@ -36,13 +36,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock, Target, HardHat } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock, Target, HardHat, ClipboardList } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import { fitEstimateToBudget, type BudgetFitScenario } from '@/lib/budgetFitEngine';
 import { useToast } from '@/hooks/use-toast';
 import type { EstimateRevisionLog } from '@/lib/types';
 import { computeCompletenessScore, evaluateApprovalGate, computeCalcStatus, type CompletenessChecklist, type ApprovalGateResult } from '@/lib/reliabilityEngine';
 import { Progress } from '@/components/ui/progress';
+import { AIIntakePanel } from '@/components/AIIntakePanel';
 
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
@@ -57,6 +59,13 @@ const defaultEst: Partial<Estimate> = {
   crew_size: 2, hours_per_day: 8, subtotal_labor_hours: 0, estimated_duration_days: 0,
   internal_notes: '', public_notes: '',
   clarification_answers_json: '[]', ai_suggestions_last_json: '[]',
+  // AI Intake defaults
+  ai_intake_summary: '', photo_analysis_summary: '', visible_findings: '',
+  likely_scope_items: '', possible_hidden_risks: '', missing_info_questions: '',
+  suggested_allowances: '', suggested_exclusions: '', suggested_assumptions: '',
+  suggested_line_items: '', ai_detected_trades: '', site_visit_required: false,
+  ai_scope_confidence: 'Medium', photo_count: 0, intake_last_updated_at: null,
+  revision_needed_warning: false, ai_apply_status: 'Not Applied',
 } as any;
 
 const FINISH_MULTS: Record<FinishLevel, number> = { Basic: 1.00, Mid: 1.15, High: 1.30, Luxury: 1.55 };
@@ -128,6 +137,7 @@ export default function NewEstimate() {
     qty: 0, labor_unit_cost: 0, material_unit_cost: 0, labor_hours_per_unit: 0, notes: '',
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [intakeOpen, setIntakeOpen] = useState(false);
   const isEdit = !!id;
 
   useEffect(() => {
@@ -847,6 +857,9 @@ export default function NewEstimate() {
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={saveDraft}>Save Draft</Button>
         <Button onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
+        <Button variant="outline" onClick={() => setIntakeOpen(true)} className="border-primary/30">
+          <ClipboardList className="mr-1 h-4 w-4" />AI Intake Assistant
+        </Button>
         {form.subtotal! > 0 && (
           <>
             <Button variant="outline" onClick={() => {
@@ -1485,6 +1498,25 @@ export default function NewEstimate() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Intake Assistant Sheet */}
+      <Sheet open={intakeOpen} onOpenChange={setIntakeOpen}>
+        <SheetContent side="right" className="w-[420px] sm:w-[480px] p-0">
+          <AIIntakePanel
+            estimate={form}
+            estimateDbId={estimateDbId}
+            media={media}
+            onUpdate={update}
+            onSave={saveDraft}
+            onMediaChange={async () => {
+              if (estimateDbId) {
+                const med = await getEstimateMedia(estimateDbId);
+                setMedia(med);
+              }
+            }}
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
