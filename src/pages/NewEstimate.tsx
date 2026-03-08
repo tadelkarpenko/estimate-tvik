@@ -767,7 +767,7 @@ export default function NewEstimate() {
           <Sparkles className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">AI Intake Assistant</span>
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-            {form.ai_apply_status === 'Applied' ? 'Good' : form.ai_apply_status === 'In Review' ? 'Review Needed' : 'Draft Only'}
+            {form.ai_apply_status === 'Draft Applied' ? 'Good' : form.ai_apply_status === 'Reviewed' ? 'Review Needed' : 'Draft Only'}
           </Badge>
         </Button>
       </div>

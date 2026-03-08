@@ -25,7 +25,6 @@ export function FloatingAIWidget() {
 
   // Hide on estimate pages — the inline AI launcher handles it there
   const isEstimatePage = location.pathname.startsWith('/estimates/') || location.pathname === '/estimates/new';
-  if (isEstimatePage && !open) return null;
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { setMessages([]); }, [location.pathname]);
