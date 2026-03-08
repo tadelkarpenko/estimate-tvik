@@ -2,16 +2,18 @@ import { useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Sparkles, Camera, HelpCircle, RefreshCw, CheckCircle, AlertTriangle,
   ChevronDown, ChevronRight, Eye, Shield, Wrench, FileQuestion, MapPin,
-  Mic, MicOff, Send, ClipboardList, ListChecks, X, Edit, ThumbsUp, ThumbsDown,
+  Mic, Send, ClipboardList, X, Edit, ThumbsUp, ThumbsDown,
+  Plus, Trash2, BarChart3, Home,
 } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import type { Estimate, EstimateMedia, AIConfidence } from '@/lib/types';
@@ -20,6 +22,11 @@ import {
   type AISuggestion, type SuggestionType, type SuggestionSourceType,
   SUGGESTION_TYPE_LABELS, SUGGESTION_STATUS_COLORS,
 } from '@/lib/suggestionStore';
+import {
+  getEstimateAreas, saveEstimateArea, deleteEstimateArea, createDefaultArea,
+  computeEstimateRollup, AREA_TYPES, QUICK_TAGS_EXTENDED,
+  type EstimateArea, type AreaType, type EstimateRollup,
+} from '@/lib/areaStore';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
@@ -46,9 +53,6 @@ interface AIIntakePanelProps {
   onMediaChange: () => void;
 }
 
-const QUICK_TAGS = ['Demo', 'Plumbing', 'Electrical', 'Paint', 'Flooring', 'Structural', 'Water Damage', 'Unknown'];
-
-// Map findings sections to suggestion types and apply targets
 const FINDINGS_TO_SUGGESTIONS: Array<{
   findingsKey: keyof IntakeFindings;
   type: SuggestionType;
@@ -67,29 +71,44 @@ const FINDINGS_TO_SUGGESTIONS: Array<{
 export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave, onMediaChange }: AIIntakePanelProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [userInput, setUserInput] = useState('');
-  const [findings, setFindings] = useState<IntakeFindings | null>(null);
+  const [activeTab, setActiveTab] = useState('areas');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['summary', 'findings', 'questions']));
-  const [intakeLog, setIntakeLog] = useState<Array<{ role: 'user' | 'system'; text: string }>>([]);
-  const [activeTab, setActiveTab] = useState('intake');
 
-  // Voice state
-  const [voiceTranscript, setVoiceTranscript] = useState(estimate.voice_transcript_raw || '');
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  // Area state
+  const [areas, setAreas] = useState<EstimateArea[]>([]);
+  const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
+  const [areaFindings, setAreaFindings] = useState<IntakeFindings | null>(null);
 
   // Review queue state
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
   const [editingSuggestionId, setEditingSuggestionId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [queueFilter, setQueueFilter] = useState<string>('all');
+  const [queueAreaFilter, setQueueAreaFilter] = useState<string>('all');
+
+  // Rollup
+  const [rollup, setRollup] = useState<EstimateRollup | null>(null);
 
   const isApproved = estimate.status === 'Accepted';
+  const selectedArea = areas.find(a => a.id === selectedAreaId);
 
-  // Load suggestions when estimateDbId changes
+  // Load areas and suggestions
   useEffect(() => {
     if (estimateDbId) {
+      getEstimateAreas(estimateDbId).then(a => {
+        setAreas(a);
+        if (a.length > 0 && !selectedAreaId) setSelectedAreaId(a[0].id!);
+      }).catch(console.error);
       getSuggestions(estimateDbId).then(setSuggestions).catch(console.error);
     }
   }, [estimateDbId]);
+
+  // Recompute rollup when areas or suggestions change
+  useEffect(() => {
+    const pendingCount = suggestions.filter(s => s.status === 'pending').length;
+    const r = computeEstimateRollup(areas, pendingCount);
+    setRollup(r);
+  }, [areas, suggestions]);
 
   const toggleSection = (key: string) => {
     setExpandedSections(prev => {
@@ -99,29 +118,81 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     });
   };
 
-  const determineWorkflow = (): string => {
-    const hasExistingData = (estimate.subtotal ?? 0) > 0 || (estimate.ai_intake_summary ?? '').length > 0;
-    const hasNewPhotos = media.length > (estimate.photo_count ?? 0);
-    if (hasExistingData && hasNewPhotos) return 'revision_check';
-    if (hasExistingData) return 'completeness_check';
-    return 'intake_fresh';
+  // ─── Area CRUD ───
+  const addArea = async (areaType: AreaType) => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+    const newArea = createDefaultArea(estimateDbId, areaType, areas.length);
+    try {
+      const id = await saveEstimateArea(newArea);
+      const updated = await getEstimateAreas(estimateDbId);
+      setAreas(updated);
+      setSelectedAreaId(id);
+      onUpdate({ area_count: updated.length } as any);
+      toast({ title: `${areaType} area added` });
+    } catch (e: any) {
+      toast({ title: 'Failed to add area', description: e.message, variant: 'destructive' });
+    }
   };
 
-  const callIntakeAI = useCallback(async (workflow?: string) => {
+  const updateArea = async (field: keyof EstimateArea, value: any) => {
+    if (!selectedArea) return;
+    const updated = { ...selectedArea, [field]: value };
+    setAreas(prev => prev.map(a => a.id === selectedArea.id ? updated : a));
+  };
+
+  const saveCurrentArea = async () => {
+    if (!selectedArea) return;
+    try {
+      await saveEstimateArea(selectedArea);
+      toast({ title: 'Area saved' });
+    } catch (e: any) {
+      toast({ title: 'Save failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  const removeArea = async (areaId: string) => {
+    try {
+      await deleteEstimateArea(areaId);
+      const updated = areas.filter(a => a.id !== areaId);
+      setAreas(updated);
+      if (selectedAreaId === areaId) setSelectedAreaId(updated[0]?.id || null);
+      onUpdate({ area_count: updated.length } as any);
+      toast({ title: 'Area removed' });
+    } catch (e: any) {
+      toast({ title: 'Delete failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  const toggleAreaTag = (tag: string) => {
+    if (!selectedArea) return;
+    const currentTags = selectedArea.quick_tags ? selectedArea.quick_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const newTags = currentTags.includes(tag) ? currentTags.filter(t => t !== tag) : [...currentTags, tag];
+    updateArea('quick_tags', newTags.join(', '));
+  };
+
+  // ─── Area-Level AI Analysis ───
+  const analyzeArea = useCallback(async () => {
+    if (!selectedArea || !estimateDbId) return;
     setLoading(true);
-    const mode = workflow || determineWorkflow();
+
+    // Save area first
+    await saveEstimateArea(selectedArea);
+
+    const hasExistingData = selectedArea.latest_ai_summary.length > 0;
+    const workflow = hasExistingData ? 'revision_check' : 'intake_fresh';
+
     const combinedInput = [
-      userInput.trim(),
-      voiceTranscript.trim() ? `\n\n[Voice Transcript]:\n${voiceTranscript.trim()}` : '',
-      selectedTags.size > 0 ? `\n\n[Quick Tags]: ${Array.from(selectedTags).join(', ')}` : '',
+      selectedArea.notes_text.trim(),
+      selectedArea.voice_transcript_raw.trim() ? `\n\n[Voice Transcript]:\n${selectedArea.voice_transcript_raw.trim()}` : '',
+      selectedArea.quick_tags ? `\n\n[Quick Tags]: ${selectedArea.quick_tags}` : '',
     ].filter(Boolean).join('');
 
-    if (combinedInput) {
-      setIntakeLog(prev => [...prev, { role: 'user', text: combinedInput.slice(0, 200) + (combinedInput.length > 200 ? '…' : '') }]);
-    }
-
     try {
-      const photoAnalyses = media.map(m => ({ caption: m.caption, url: m.file_url }));
+      const areaMedia = media.filter(() => true); // all media for now
+      const photoAnalyses = areaMedia.map(m => ({ caption: m.caption, url: m.file_url }));
 
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
         method: 'POST',
@@ -132,24 +203,21 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         body: JSON.stringify({
           action: 'intake',
           data: {
-            workflow: mode,
+            workflow,
             project_type: estimate.project_type || '',
-            description: estimate.project_name || '',
-            notes: estimate.internal_notes || '',
+            description: `Area: ${selectedArea.area_name} (${selectedArea.area_type})`,
+            notes: selectedArea.notes_text || '',
             sqft: estimate.sqft || 0,
             fixture_count: estimate.fixture_count || 0,
             finish_level: estimate.finish_level || 'Basic',
             photo_analyses: photoAnalyses,
-            existing_estimate: mode !== 'intake_fresh' ? {
-              total_low: estimate.total_low,
-              total_high: estimate.total_high,
-              line_items_json: estimate.line_items_json,
-              assumptions_rich: estimate.assumptions_rich,
-              risk_table_json: estimate.risk_table_json,
-              ai_intake_summary: estimate.ai_intake_summary,
+            existing_estimate: hasExistingData ? {
+              ai_intake_summary: selectedArea.latest_ai_summary,
+              visible_findings: selectedArea.visible_findings,
+              likely_scope_items: selectedArea.likely_scope_items,
             } : null,
             user_input: combinedInput || null,
-            voice_transcript: voiceTranscript.trim() || null,
+            voice_transcript: selectedArea.voice_transcript_raw.trim() || null,
           },
         }),
       });
@@ -160,7 +228,6 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       }
 
       const { content } = await resp.json();
-
       let parsed: IntakeFindings;
       try {
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
@@ -175,123 +242,102 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         };
       }
 
-      setFindings(parsed);
-      setIntakeLog(prev => [...prev, { role: 'system', text: `Analysis complete (${parsed.confidence} confidence). ${parsed.intake_summary}` }]);
-      setUserInput('');
+      setAreaFindings(parsed);
 
-      // Update estimate with findings (draft fields only)
-      const voiceUpdates: Partial<Estimate> = {};
-      if (voiceTranscript.trim()) {
-        (voiceUpdates as any).voice_transcript_raw = voiceTranscript;
-        (voiceUpdates as any).voice_transcript_cleaned = voiceTranscript; // simplified for V1
-        (voiceUpdates as any).voice_last_updated_at = new Date().toISOString();
-      }
-
-      onUpdate({
-        ai_intake_summary: parsed.intake_summary || '',
+      // Update area with findings
+      const updatedArea: EstimateArea = {
+        ...selectedArea,
         visible_findings: parsed.visible_findings || '',
         likely_scope_items: parsed.likely_scope_items || '',
         possible_hidden_risks: parsed.possible_hidden_risks || '',
-        missing_info_questions: parsed.missing_info_questions || '',
+        ai_detected_trades: parsed.suggested_trades || '',
         suggested_allowances: parsed.suggested_allowances || '',
         suggested_exclusions: parsed.suggested_exclusions || '',
         suggested_assumptions: parsed.suggested_assumptions || '',
-        suggested_line_items: parsed.suggested_line_items || '',
-        ai_detected_trades: parsed.suggested_trades || '',
-        site_visit_required: parsed.site_visit_required ?? false,
-        ai_scope_confidence: parsed.confidence || 'Medium',
-        photo_count: media.length,
-        intake_last_updated_at: new Date().toISOString(),
-        revision_needed_warning: mode === 'revision_check' && parsed.confidence !== 'High',
-        ...voiceUpdates,
-      } as any);
+        missing_info_questions: parsed.missing_info_questions || '',
+        confidence: parsed.confidence || 'Medium',
+        site_visit_flag: parsed.site_visit_required ?? false,
+        latest_ai_summary: parsed.intake_summary || '',
+        revision_status: hasExistingData ? 'Updated' : 'Original',
+      };
 
-      toast({ title: 'Intake analysis complete', description: `Confidence: ${parsed.confidence}` });
+      await saveEstimateArea(updatedArea);
+      setAreas(prev => prev.map(a => a.id === selectedArea.id ? updatedArea : a));
+
+      toast({ title: 'Area analysis complete', description: `${selectedArea.area_name}: ${parsed.confidence} confidence` });
     } catch (e: any) {
-      toast({ title: 'Intake analysis failed', description: e.message, variant: 'destructive' });
-      setIntakeLog(prev => [...prev, { role: 'system', text: `Error: ${e.message}. You can still proceed with manual intake.` }]);
+      toast({ title: 'Analysis failed', description: e.message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
-  }, [estimate, media, userInput, voiceTranscript, selectedTags, onUpdate, toast]);
+  }, [selectedArea, estimateDbId, estimate, media, toast]);
 
-  // ─── Send to Review Queue ───
-  const sendToReviewQueue = async () => {
-    if (!findings || !estimateDbId) {
-      toast({ title: 'Cannot send to queue', description: 'Run analysis first and save the estimate.', variant: 'destructive' });
+  // ─── Send Area to Review Queue ───
+  const sendAreaToQueue = async () => {
+    if (!areaFindings || !estimateDbId || !selectedArea) {
+      toast({ title: 'Run analysis first', variant: 'destructive' });
       return;
     }
-
     setLoading(true);
     try {
-      const sourceType: SuggestionSourceType = voiceTranscript.trim()
+      const sourceType: SuggestionSourceType = selectedArea.voice_transcript_raw.trim()
         ? (media.length > 0 ? 'merged' : 'voice')
         : (media.length > 0 ? 'photo' : 'text');
-
+      const batchId = crypto.randomUUID();
       const newSuggestions: any[] = [];
 
       for (const mapping of FINDINGS_TO_SUGGESTIONS) {
-        const value = findings[mapping.findingsKey];
+        const value = areaFindings[mapping.findingsKey];
         if (typeof value === 'string' && value.trim()) {
-          // Split bullet items into individual suggestions
           const items = value.split(/\n/).filter(l => l.trim().startsWith('-') || l.trim().startsWith('•') || l.trim().match(/^\d+\./));
-          if (items.length > 0) {
-            for (const item of items) {
-              const cleanItem = item.replace(/^[-•\d.)\s]+/, '').trim();
-              if (!cleanItem) continue;
-              newSuggestions.push({
-                suggestion_id: crypto.randomUUID(),
-                estimate_id: estimateDbId,
-                source_type: sourceType,
-                suggestion_type: mapping.type,
-                confidence: findings.confidence,
-                evidence_summary: findings.intake_summary || '',
-                reason_for_suggestion: `AI Intake (${sourceType}) — ${mapping.type}`,
-                suggested_value: cleanItem,
-                apply_target: mapping.target,
-                status: 'pending',
-                reviewer_notes: '',
-                approved_by: '',
-                edited_value: '',
-              });
-            }
-          } else {
-            // Single block value
+          const processItems = items.length > 0 ? items : [value];
+          for (const item of processItems) {
+            const cleanItem = item.replace(/^[-•\d.)\s]+/, '').trim();
+            if (!cleanItem) continue;
             newSuggestions.push({
               suggestion_id: crypto.randomUUID(),
               estimate_id: estimateDbId,
               source_type: sourceType,
               suggestion_type: mapping.type,
-              confidence: findings.confidence,
-              evidence_summary: findings.intake_summary || '',
-              reason_for_suggestion: `AI Intake (${sourceType}) — ${mapping.type}`,
-              suggested_value: value.trim(),
+              confidence: areaFindings.confidence,
+              evidence_summary: `Area: ${selectedArea.area_name}. ${areaFindings.intake_summary || ''}`,
+              reason_for_suggestion: `AI Intake (${sourceType}) — ${selectedArea.area_name} — ${mapping.type}`,
+              suggested_value: cleanItem,
               apply_target: mapping.target,
               status: 'pending',
               reviewer_notes: '',
               approved_by: '',
               edited_value: '',
+              area_id: selectedArea.id,
+              suggestion_batch_id: batchId,
+              priority_level: areaFindings.confidence === 'Low' ? 'High' : 'Medium',
+              queue_group: selectedArea.area_name,
+              source_timestamp: new Date().toISOString(),
             });
           }
         }
       }
 
-      // Site visit recommendation
-      if (findings.site_visit_required) {
+      if (areaFindings.site_visit_required) {
         newSuggestions.push({
           suggestion_id: crypto.randomUUID(),
           estimate_id: estimateDbId,
           source_type: sourceType,
           suggestion_type: 'site_visit_recommendation',
-          confidence: findings.confidence,
-          evidence_summary: findings.intake_summary || '',
-          reason_for_suggestion: 'AI confidence is low or hidden conditions are likely.',
-          suggested_value: 'Site visit recommended before finalizing scope.',
+          confidence: areaFindings.confidence,
+          evidence_summary: `Area: ${selectedArea.area_name}`,
+          reason_for_suggestion: 'Confidence is low or hidden conditions are likely.',
+          suggested_value: `Site visit recommended for ${selectedArea.area_name}.`,
           apply_target: 'site_visit_required',
           status: 'pending',
           reviewer_notes: '',
           approved_by: '',
           edited_value: '',
+          area_id: selectedArea.id,
+          suggestion_batch_id: batchId,
+          priority_level: 'High',
+          queue_group: selectedArea.area_name,
+          source_timestamp: new Date().toISOString(),
         });
       }
 
@@ -299,7 +345,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       const updated = await getSuggestions(estimateDbId);
       setSuggestions(updated);
       setActiveTab('queue');
-      toast({ title: 'Sent to review queue', description: `${newSuggestions.length} suggestions queued for review.` });
+      toast({ title: 'Sent to queue', description: `${newSuggestions.length} suggestions from ${selectedArea.area_name}` });
     } catch (e: any) {
       toast({ title: 'Queue error', description: e.message, variant: 'destructive' });
     } finally {
@@ -310,21 +356,14 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   // ─── Apply Approved Suggestions ───
   const applyApprovedSuggestions = async () => {
     if (!estimateDbId) return;
-
-    const approvable = suggestions.filter(s => s.status === 'approved' || s.status === 'edited');
+    const approvable = filteredSuggestions.filter(s => s.status === 'approved' || s.status === 'edited');
     if (approvable.length === 0) {
-      toast({ title: 'Nothing to apply', description: 'Approve or edit suggestions first.', variant: 'destructive' });
+      toast({ title: 'Nothing to apply', variant: 'destructive' });
       return;
     }
-
     if (isApproved) {
-      toast({
-        title: 'Approved Estimate — Review Required',
-        description: 'Suggestions saved as advisory. They will NOT overwrite approved values.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Approved Estimate — Advisory Only', description: 'Will NOT overwrite approved values.', variant: 'destructive' });
     }
-
     setLoading(true);
     try {
       const updates: Partial<Estimate> = {};
@@ -333,8 +372,6 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       for (const s of approvable) {
         const value = s.status === 'edited' && s.edited_value ? s.edited_value : s.suggested_value;
         const target = s.apply_target;
-
-        // Map to estimate support fields — never overwrite pricing
         if (['suggested_exclusions', 'suggested_allowances', 'suggested_assumptions',
              'visible_findings', 'likely_scope_items', 'possible_hidden_risks',
              'missing_info_questions', 'ai_detected_trades', 'suggested_line_items'].includes(target)) {
@@ -347,9 +384,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           updates.internal_notes = existing ? `${existing}\n[AI] ${value}` : `[AI] ${value}`;
         }
 
-        // Mark as applied
         await updateSuggestionStatus(s.id, 'applied', { approved_by: 'TVIK' });
-
         auditEntries.push({
           audit_id: crypto.randomUUID(),
           estimate_id: estimateDbId,
@@ -361,20 +396,18 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           approved_by: 'TVIK',
           approved_at: new Date().toISOString(),
           source_type: s.source_type,
+          area_id: (s as any).area_id || null,
+          suggestion_batch_id: (s as any).suggestion_batch_id || '',
         });
       }
 
       updates.ai_apply_status = 'Draft Applied' as any;
       onUpdate(updates);
-
-      if (auditEntries.length > 0) {
-        await insertAppliedAudit(auditEntries);
-      }
-
+      if (auditEntries.length > 0) await insertAppliedAudit(auditEntries);
       await onSave();
-      const updated = await getSuggestions(estimateDbId);
-      setSuggestions(updated);
-      toast({ title: 'Applied', description: `${approvable.length} suggestions applied to estimate support fields. Audit trail created.` });
+      const updatedSuggestions = await getSuggestions(estimateDbId);
+      setSuggestions(updatedSuggestions);
+      toast({ title: 'Applied', description: `${approvable.length} suggestions applied. Audit trail created.` });
     } catch (e: any) {
       toast({ title: 'Apply failed', description: e.message, variant: 'destructive' });
     } finally {
@@ -382,34 +415,39 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   };
 
+  // ─── Update Estimate Rollup ───
+  const updateEstimateRollup = async () => {
+    if (!rollup) return;
+    onUpdate({
+      area_count: rollup.area_count,
+      ai_pending_suggestions_count: rollup.ai_pending_suggestions_count,
+      ai_estimate_health_status: rollup.ai_estimate_health_status,
+      ai_estimate_rollup_summary: rollup.ai_estimate_rollup_summary,
+      ai_revision_review_status: rollup.ai_revision_review_status,
+      estimate_site_visit_recommended: rollup.estimate_site_visit_recommended,
+      estimate_confidence_rollup: rollup.estimate_confidence_rollup,
+    } as any);
+    await onSave();
+    toast({ title: 'Estimate rollup updated' });
+  };
+
   const handleApproveSuggestion = async (s: AISuggestion) => {
     await updateSuggestionStatus(s.id, 'approved', { approved_by: 'TVIK' });
     setSuggestions(prev => prev.map(x => x.id === s.id ? { ...x, status: 'approved' as any } : x));
   };
-
   const handleRejectSuggestion = async (s: AISuggestion) => {
     await updateSuggestionStatus(s.id, 'rejected');
     setSuggestions(prev => prev.map(x => x.id === s.id ? { ...x, status: 'rejected' as any } : x));
   };
-
   const handleEditSuggestion = (s: AISuggestion) => {
     setEditingSuggestionId(s.id);
     setEditValue(s.edited_value || s.suggested_value);
   };
-
   const handleSaveEdit = async (s: AISuggestion) => {
     await updateSuggestionStatus(s.id, 'edited', { edited_value: editValue, approved_by: 'TVIK' });
     setSuggestions(prev => prev.map(x => x.id === s.id ? { ...x, status: 'edited' as any, edited_value: editValue } : x));
     setEditingSuggestionId(null);
     setEditValue('');
-  };
-
-  const toggleTag = (tag: string) => {
-    setSelectedTags(prev => {
-      const next = new Set(prev);
-      next.has(tag) ? next.delete(tag) : next.add(tag);
-      return next;
-    });
   };
 
   const confidenceBadge = (level: AIConfidence) => {
@@ -418,8 +456,31 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       Medium: 'bg-amber-100 text-amber-800 border-amber-300',
       Low: 'bg-red-100 text-red-800 border-red-300',
     };
-    return <Badge variant="outline" className={`${colors[level]} text-xs`}>{level} Confidence</Badge>;
+    return <Badge variant="outline" className={`${colors[level]} text-xs`}>{level}</Badge>;
   };
+
+  const healthBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      'Good': 'bg-emerald-100 text-emerald-800',
+      'Review Needed': 'bg-amber-100 text-amber-800',
+      'High Risk': 'bg-red-100 text-red-800',
+    };
+    return <Badge className={`${colors[status] || ''} text-xs`}>{status}</Badge>;
+  };
+
+  const pendingCount = suggestions.filter(s => s.status === 'pending').length;
+  const approvedCount = suggestions.filter(s => s.status === 'approved' || s.status === 'edited').length;
+
+  // Filtered suggestions
+  const filteredSuggestions = suggestions.filter(s => {
+    if (queueFilter !== 'all' && s.status !== queueFilter) return false;
+    if (queueAreaFilter !== 'all') {
+      const areaId = (s as any).area_id;
+      if (queueAreaFilter === 'no-area') return !areaId;
+      if (areaId !== queueAreaFilter) return false;
+    }
+    return true;
+  });
 
   const SectionHeader = ({ id, icon: Icon, title, badge }: { id: string; icon: any; title: string; badge?: React.ReactNode }) => (
     <button onClick={() => toggleSection(id)} className="flex items-center gap-2 w-full text-left py-1.5 text-sm font-semibold text-foreground hover:text-primary transition-colors">
@@ -432,15 +493,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   const FindingSection = ({ content }: { content: string }) => {
     if (!content) return <p className="text-xs text-muted-foreground italic">No data yet</p>;
-    return (
-      <div className="prose prose-sm max-w-none text-foreground text-xs">
-        <ReactMarkdown>{content}</ReactMarkdown>
-      </div>
-    );
+    return <div className="prose prose-sm max-w-none text-foreground text-xs"><ReactMarkdown>{content}</ReactMarkdown></div>;
   };
 
-  const pendingCount = suggestions.filter(s => s.status === 'pending').length;
-  const approvedCount = suggestions.filter(s => s.status === 'approved' || s.status === 'edited').length;
+  const currentAreaTags = selectedArea?.quick_tags ? selectedArea.quick_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
 
   return (
     <div className="flex flex-col h-full">
@@ -453,170 +509,267 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
             <Badge variant="outline" className="text-xs">Draft Only</Badge>
           </div>
           <div className="flex items-center gap-2">
-            {findings && confidenceBadge(findings.confidence)}
-            {pendingCount > 0 && (
-              <Badge variant="secondary" className="text-xs">{pendingCount} pending</Badge>
-            )}
+            {rollup && healthBadge(rollup.ai_estimate_health_status)}
+            {pendingCount > 0 && <Badge variant="secondary" className="text-xs">{pendingCount} pending</Badge>}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          AI suggestions are draft recommendations. All changes go through review queue before applying.
-        </p>
+        <p className="text-xs text-muted-foreground mt-1">Room-by-room intake. All changes go through review queue.</p>
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <TabsList className="mx-4 mt-2 grid grid-cols-3 h-8">
-          <TabsTrigger value="intake" className="text-xs">Intake</TabsTrigger>
-          <TabsTrigger value="queue" className="text-xs">
-            Queue {pendingCount > 0 && `(${pendingCount})`}
-          </TabsTrigger>
-          <TabsTrigger value="findings" className="text-xs">Findings</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <TabsList className="mx-4 mt-2 grid grid-cols-4 h-8">
+          <TabsTrigger value="areas" className="text-xs">Areas</TabsTrigger>
+          <TabsTrigger value="capture" className="text-xs">Capture</TabsTrigger>
+          <TabsTrigger value="queue" className="text-xs">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
+          <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
         </TabsList>
 
-        {/* ═══ INTAKE TAB ═══ */}
-        <TabsContent value="intake" className="flex-1 overflow-hidden">
+        {/* ═══ AREAS TAB ═══ */}
+        <TabsContent value="areas" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-4">
-              {/* Warnings */}
-              {isApproved && (
-                <Card className="border-amber-300 bg-amber-50">
-                  <CardContent className="py-2 px-3 flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-                    <p className="text-xs text-amber-800">This estimate is Approved. AI findings are advisory only.</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {findings?.site_visit_required && (
-                <Card className="border-red-300 bg-red-50">
-                  <CardContent className="py-2 px-3 flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-red-600 flex-shrink-0" />
-                    <p className="text-xs text-red-800"><strong>Site visit recommended.</strong> Confidence too low for reliable remote scope assessment.</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Photo Upload */}
+            <div className="p-4 space-y-3">
+              {/* Add Area */}
               <Card>
                 <CardHeader className="py-2 px-3">
-                  <CardTitle className="text-xs flex items-center gap-1.5">
-                    <Camera className="h-3.5 w-3.5" /> Photos ({media.length})
-                  </CardTitle>
+                  <CardTitle className="text-xs flex items-center gap-1.5"><Plus className="h-3.5 w-3.5" /> Add Area</CardTitle>
                 </CardHeader>
                 <CardContent className="px-3 pb-3">
-                  {estimateDbId ? (
-                    <MediaUploader
-                      folder="estimates"
-                      onUploaded={async () => {
-                        onMediaChange();
-                        onUpdate({ photo_count: (estimate.photo_count ?? 0) + 1 });
-                      }}
-                    />
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Save the estimate first to enable photo upload.</p>
-                  )}
-                  {media.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {media.slice(0, 6).map(m => (
-                        <div key={m.id} className="w-12 h-12 rounded border overflow-hidden">
-                          <img src={m.file_url} alt={m.caption} className="w-full h-full object-cover" />
-                        </div>
-                      ))}
-                      {media.length > 6 && <span className="text-xs text-muted-foreground self-center">+{media.length - 6} more</span>}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Text Input */}
-              <Card>
-                <CardContent className="py-3 px-3 space-y-2">
-                  <Label className="text-xs font-medium">Typed Notes</Label>
-                  <Textarea
-                    value={userInput}
-                    onChange={e => setUserInput(e.target.value)}
-                    placeholder="Describe the project, paste client notes, room-by-room details..."
-                    className="text-xs min-h-[60px]"
-                    disabled={loading}
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Voice Transcript Area */}
-              <Card>
-                <CardHeader className="py-2 px-3">
-                  <CardTitle className="text-xs flex items-center gap-1.5">
-                    <Mic className="h-3.5 w-3.5" /> Voice Transcript
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-3 pb-3 space-y-2">
-                  <Textarea
-                    value={voiceTranscript}
-                    onChange={e => setVoiceTranscript(e.target.value)}
-                    placeholder="Paste or dictate your walkthrough transcript here. Future: live recording will be added."
-                    className="text-xs min-h-[80px]"
-                    disabled={loading}
-                  />
                   <div className="flex flex-wrap gap-1.5">
-                    <Button size="sm" variant="outline" onClick={() => setVoiceTranscript('')} disabled={loading || !voiceTranscript} className="text-xs h-7">
-                      <X className="h-3 w-3 mr-1" />Clear
+                    {AREA_TYPES.map(type => (
+                      <Button key={type} size="sm" variant="outline" onClick={() => addArea(type)} className="text-xs h-8" disabled={!estimateDbId}>
+                        <Home className="h-3 w-3 mr-1" />{type}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Area List */}
+              {areas.length === 0 ? (
+                <div className="text-center py-8">
+                  <Home className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-xs text-muted-foreground">No areas yet. Add areas to start room-by-room intake.</p>
+                </div>
+              ) : (
+                areas.map(area => (
+                  <Card
+                    key={area.id}
+                    className={`cursor-pointer transition-colors ${selectedAreaId === area.id ? 'border-primary ring-1 ring-primary/20' : 'hover:border-muted-foreground/30'}`}
+                    onClick={() => { setSelectedAreaId(area.id!); setActiveTab('capture'); }}
+                  >
+                    <CardContent className="py-2 px-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Home className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{area.area_name || area.area_type}</p>
+                            <p className="text-xs text-muted-foreground">{area.area_type}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {confidenceBadge(area.confidence)}
+                          {area.site_visit_flag && <MapPin className="h-3 w-3 text-red-500" />}
+                          {area.revision_status === 'Needs Review' && <AlertTriangle className="h-3 w-3 text-amber-500" />}
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); removeArea(area.id!); }}>
+                            <Trash2 className="h-3 w-3 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      </div>
+                      {area.quick_tags && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {area.quick_tags.split(',').slice(0, 4).map((t, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{t.trim()}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ═══ CAPTURE TAB ═══ */}
+        <TabsContent value="capture" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-4">
+              {!selectedArea ? (
+                <div className="text-center py-8">
+                  <p className="text-xs text-muted-foreground">Select or add an area from the Areas tab first.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Area header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Home className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold">{selectedArea.area_name || selectedArea.area_type}</span>
+                      {confidenceBadge(selectedArea.confidence)}
+                    </div>
+                    <Select value={selectedAreaId || ''} onValueChange={setSelectedAreaId}>
+                      <SelectTrigger className="w-[140px] h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {areas.map(a => (
+                          <SelectItem key={a.id} value={a.id!} className="text-xs">{a.area_name || a.area_type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Area Name */}
+                  <div>
+                    <Label className="text-xs">Area Name</Label>
+                    <Input
+                      value={selectedArea.area_name}
+                      onChange={e => updateArea('area_name', e.target.value)}
+                      className="text-xs h-8 mt-1"
+                      placeholder="e.g. Master Bathroom"
+                    />
+                  </div>
+
+                  {/* Warnings */}
+                  {isApproved && (
+                    <Card className="border-amber-300 bg-amber-50">
+                      <CardContent className="py-2 px-3 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                        <p className="text-xs text-amber-800">Approved estimate. AI findings are advisory only.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {selectedArea.site_visit_flag && (
+                    <Card className="border-red-300 bg-red-50">
+                      <CardContent className="py-2 px-3 flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-red-600 flex-shrink-0" />
+                        <p className="text-xs text-red-800"><strong>Site visit recommended</strong> for this area.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Photos */}
+                  <Card>
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs flex items-center gap-1.5"><Camera className="h-3.5 w-3.5" /> Photos ({media.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-3">
+                      {estimateDbId ? (
+                        <MediaUploader folder="estimates" onUploaded={async () => { onMediaChange(); updateArea('uploaded_photo_count', selectedArea.uploaded_photo_count + 1); }} />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Save estimate first.</p>
+                      )}
+                      {media.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {media.slice(0, 6).map(m => (
+                            <div key={m.id} className="w-12 h-12 rounded border overflow-hidden">
+                              <img src={m.file_url} alt={m.caption} className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                          {media.length > 6 && <span className="text-xs text-muted-foreground self-center">+{media.length - 6}</span>}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Typed Notes */}
+                  <Card>
+                    <CardContent className="py-3 px-3 space-y-2">
+                      <Label className="text-xs font-medium">Typed Notes</Label>
+                      <Textarea
+                        value={selectedArea.notes_text}
+                        onChange={e => updateArea('notes_text', e.target.value)}
+                        placeholder="Describe conditions, customer requests, measurements..."
+                        className="text-xs min-h-[60px]"
+                        disabled={loading}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Voice Transcript */}
+                  <Card>
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs flex items-center gap-1.5"><Mic className="h-3.5 w-3.5" /> Voice Transcript</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-3 space-y-2">
+                      <Textarea
+                        value={selectedArea.voice_transcript_raw}
+                        onChange={e => updateArea('voice_transcript_raw', e.target.value)}
+                        placeholder="Paste walkthrough transcript or dictation output..."
+                        className="text-xs min-h-[60px]"
+                        disabled={loading}
+                      />
+                      <Button size="sm" variant="outline" onClick={() => updateArea('voice_transcript_raw', '')} disabled={loading || !selectedArea.voice_transcript_raw} className="text-xs h-7">
+                        <X className="h-3 w-3 mr-1" />Clear
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Quick Tags */}
+                  <Card>
+                    <CardContent className="py-3 px-3 space-y-2">
+                      <Label className="text-xs font-medium">Quick Tags</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {QUICK_TAGS_EXTENDED.map(tag => (
+                          <Badge
+                            key={tag}
+                            variant={currentAreaTags.includes(tag) ? 'default' : 'outline'}
+                            className="text-xs cursor-pointer select-none py-1 px-2"
+                            onClick={() => toggleAreaTag(tag)}
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Area Findings Summary */}
+                  {selectedArea.latest_ai_summary && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> Area Findings</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        <FindingSection content={selectedArea.latest_ai_summary} />
+                        {selectedArea.visible_findings && (
+                          <div>
+                            <SectionHeader id={`af-vis-${selectedArea.id}`} icon={Eye} title="Visible Findings" />
+                            {expandedSections.has(`af-vis-${selectedArea.id}`) && <FindingSection content={selectedArea.visible_findings} />}
+                          </div>
+                        )}
+                        {selectedArea.possible_hidden_risks && (
+                          <div>
+                            <SectionHeader id={`af-risk-${selectedArea.id}`} icon={Shield} title="Hidden Risks" />
+                            {expandedSections.has(`af-risk-${selectedArea.id}`) && <FindingSection content={selectedArea.possible_hidden_risks} />}
+                          </div>
+                        )}
+                        {selectedArea.missing_info_questions && (
+                          <div>
+                            <SectionHeader id={`af-q-${selectedArea.id}`} icon={FileQuestion} title="Missing Info" />
+                            {expandedSections.has(`af-q-${selectedArea.id}`) && <FindingSection content={selectedArea.missing_info_questions} />}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-1.5 sticky bottom-0 bg-background py-2">
+                    <Button size="sm" onClick={saveCurrentArea} disabled={loading} variant="outline" className="text-xs h-9">
+                      <CheckCircle className="h-3 w-3 mr-1" />Save Area
+                    </Button>
+                    <Button size="sm" onClick={analyzeArea} disabled={loading} className="text-xs h-9">
+                      <Sparkles className="h-3 w-3 mr-1" />{loading ? 'Analyzing…' : 'Analyze Area'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={sendAreaToQueue} disabled={loading || !areaFindings} className="text-xs h-9">
+                      <Send className="h-3 w-3 mr-1" />Send to Queue
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => updateArea('site_visit_flag', true)} className="text-xs h-9">
+                      <MapPin className="h-3 w-3 mr-1" />Site Visit
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">Paste walkthrough transcript or voice dictation output. Recording support coming soon.</p>
-                </CardContent>
-              </Card>
-
-              {/* Quick Tags */}
-              <Card>
-                <CardContent className="py-3 px-3 space-y-2">
-                  <Label className="text-xs font-medium">Quick Tags</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {QUICK_TAGS.map(tag => (
-                      <Badge
-                        key={tag}
-                        variant={selectedTags.has(tag) ? 'default' : 'outline'}
-                        className="text-xs cursor-pointer select-none"
-                        onClick={() => toggleTag(tag)}
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-1.5">
-                <Button size="sm" onClick={() => callIntakeAI()} disabled={loading} className="text-xs h-8">
-                  <Sparkles className="h-3 w-3 mr-1" />{loading ? 'Analyzing…' : 'Analyze'}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => callIntakeAI('intake_fresh')} disabled={loading} className="text-xs h-8">
-                  <HelpCircle className="h-3 w-3 mr-1" />Ask Questions
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => callIntakeAI('completeness_check')} disabled={loading} className="text-xs h-8">
-                  <RefreshCw className="h-3 w-3 mr-1" />Check Completeness
-                </Button>
-                <Button size="sm" variant="outline" onClick={sendToReviewQueue} disabled={loading || !findings} className="text-xs h-8">
-                  <Send className="h-3 w-3 mr-1" />Send to Queue
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => onUpdate({ site_visit_required: true })} className="text-xs h-8">
-                  <MapPin className="h-3 w-3 mr-1" />Mark Site Visit
-                </Button>
-              </div>
-
-              {/* Intake Log */}
-              {intakeLog.length > 0 && (
-                <Card>
-                  <CardHeader className="py-2 px-3"><CardTitle className="text-xs">Intake Log</CardTitle></CardHeader>
-                  <CardContent className="px-3 pb-3 space-y-1.5 max-h-[150px] overflow-y-auto">
-                    {intakeLog.map((entry, i) => (
-                      <div key={i} className={`text-xs p-1.5 rounded ${entry.role === 'user' ? 'bg-primary/10 ml-4' : 'bg-muted mr-4'}`}>
-                        {entry.text}
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
+                </>
               )}
             </div>
           </ScrollArea>
@@ -626,32 +779,59 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         <TabsContent value="queue" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-3">
+              {/* Filters */}
+              <div className="flex flex-wrap gap-2">
+                <Select value={queueFilter} onValueChange={setQueueFilter}>
+                  <SelectTrigger className="w-[120px] h-7 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">All Status</SelectItem>
+                    <SelectItem value="pending" className="text-xs">Pending</SelectItem>
+                    <SelectItem value="approved" className="text-xs">Approved</SelectItem>
+                    <SelectItem value="edited" className="text-xs">Edited</SelectItem>
+                    <SelectItem value="rejected" className="text-xs">Rejected</SelectItem>
+                    <SelectItem value="applied" className="text-xs">Applied</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={queueAreaFilter} onValueChange={setQueueAreaFilter}>
+                  <SelectTrigger className="w-[120px] h-7 text-xs"><SelectValue placeholder="Area" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">All Areas</SelectItem>
+                    <SelectItem value="no-area" className="text-xs">No Area</SelectItem>
+                    {areas.map(a => (
+                      <SelectItem key={a.id} value={a.id!} className="text-xs">{a.area_name || a.area_type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Apply button */}
               {approvedCount > 0 && (
                 <Button onClick={applyApprovedSuggestions} disabled={loading} className="w-full text-xs h-8">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Apply {approvedCount} Approved Suggestion{approvedCount !== 1 ? 's' : ''}
+                  <CheckCircle className="h-3 w-3 mr-1" />Apply {approvedCount} Approved
                 </Button>
               )}
 
-              {suggestions.length === 0 && (
+              {filteredSuggestions.length === 0 && (
                 <div className="text-center py-8">
                   <ClipboardList className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-                  <p className="text-xs text-muted-foreground">No suggestions in queue. Run Analyze then Send to Queue.</p>
+                  <p className="text-xs text-muted-foreground">No suggestions match filters.</p>
                 </div>
               )}
 
-              {/* Group by type */}
+              {/* Group by area then type */}
               {Object.entries(
-                suggestions.reduce<Record<string, AISuggestion[]>>((acc, s) => {
-                  (acc[s.suggestion_type] = acc[s.suggestion_type] || []).push(s);
+                filteredSuggestions.reduce<Record<string, AISuggestion[]>>((acc, s) => {
+                  const areaId = (s as any).area_id;
+                  const areaName = areaId ? (areas.find(a => a.id === areaId)?.area_name || 'Unknown Area') : 'Estimate Level';
+                  const group = `${areaName} — ${SUGGESTION_TYPE_LABELS[s.suggestion_type as SuggestionType] || s.suggestion_type}`;
+                  (acc[group] = acc[group] || []).push(s);
                   return acc;
                 }, {})
-              ).map(([type, items]) => (
-                <Card key={type}>
+              ).map(([group, items]) => (
+                <Card key={group}>
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-xs flex items-center gap-2">
-                      {SUGGESTION_TYPE_LABELS[type as SuggestionType] || type}
+                      {group}
                       <Badge variant="secondary" className="text-xs">{items.length}</Badge>
                     </CardTitle>
                   </CardHeader>
@@ -661,11 +841,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-xs text-foreground flex-1">
                             {editingSuggestionId === s.id ? (
-                              <Textarea
-                                value={editValue}
-                                onChange={e => setEditValue(e.target.value)}
-                                className="text-xs min-h-[40px]"
-                              />
+                              <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} className="text-xs min-h-[40px]" />
                             ) : (
                               s.edited_value || s.suggested_value
                             )}
@@ -677,24 +853,26 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                         <div className="flex items-center gap-1 flex-wrap">
                           <Badge variant="outline" className="text-xs">{s.source_type}</Badge>
                           {confidenceBadge(s.confidence as AIConfidence)}
+                          {(s as any).priority_level === 'High' && <Badge className="bg-red-100 text-red-800 text-xs">High Priority</Badge>}
                         </div>
+                        {s.evidence_summary && <p className="text-xs text-muted-foreground">{s.evidence_summary.slice(0, 100)}</p>}
                         {s.status === 'pending' && (
                           <div className="flex gap-1 pt-1">
-                            <Button size="sm" variant="outline" onClick={() => handleApproveSuggestion(s)} className="text-xs h-6 px-2">
+                            <Button size="sm" variant="outline" onClick={() => handleApproveSuggestion(s)} className="text-xs h-7 px-2">
                               <ThumbsUp className="h-3 w-3 mr-1" />Approve
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleEditSuggestion(s)} className="text-xs h-6 px-2">
+                            <Button size="sm" variant="outline" onClick={() => handleEditSuggestion(s)} className="text-xs h-7 px-2">
                               <Edit className="h-3 w-3 mr-1" />Edit
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleRejectSuggestion(s)} className="text-xs h-6 px-2">
+                            <Button size="sm" variant="outline" onClick={() => handleRejectSuggestion(s)} className="text-xs h-7 px-2">
                               <ThumbsDown className="h-3 w-3 mr-1" />Reject
                             </Button>
                           </div>
                         )}
                         {editingSuggestionId === s.id && (
                           <div className="flex gap-1 pt-1">
-                            <Button size="sm" onClick={() => handleSaveEdit(s)} className="text-xs h-6 px-2">Save Edit</Button>
-                            <Button size="sm" variant="outline" onClick={() => setEditingSuggestionId(null)} className="text-xs h-6 px-2">Cancel</Button>
+                            <Button size="sm" onClick={() => handleSaveEdit(s)} className="text-xs h-7 px-2">Save Edit</Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditingSuggestionId(null)} className="text-xs h-7 px-2">Cancel</Button>
                           </div>
                         )}
                       </div>
@@ -706,94 +884,90 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           </ScrollArea>
         </TabsContent>
 
-        {/* ═══ FINDINGS TAB ═══ */}
-        <TabsContent value="findings" className="flex-1 overflow-hidden">
+        {/* ═══ SUMMARY TAB ═══ */}
+        <TabsContent value="summary" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-3">
-              {findings ? (
-                <>
-                  <div>
-                    <SectionHeader id="summary" icon={Sparkles} title="Summary" badge={confidenceBadge(findings.confidence)} />
-                    {expandedSections.has('summary') && (
-                      <Card className="mt-1"><CardContent className="py-2 px-3">
-                        <FindingSection content={findings.intake_summary} />
-                      </CardContent></Card>
-                    )}
+              {/* Estimate Health Card */}
+              <Card>
+                <CardHeader className="py-2 px-3">
+                  <CardTitle className="text-xs flex items-center gap-1.5"><BarChart3 className="h-3.5 w-3.5" /> Estimate AI Health</CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="text-xs"><span className="text-muted-foreground">Areas:</span> <strong>{rollup?.area_count ?? 0}</strong></div>
+                    <div className="text-xs"><span className="text-muted-foreground">Pending:</span> <strong>{rollup?.ai_pending_suggestions_count ?? 0}</strong></div>
+                    <div className="text-xs"><span className="text-muted-foreground">Health:</span> {rollup && healthBadge(rollup.ai_estimate_health_status)}</div>
+                    <div className="text-xs"><span className="text-muted-foreground">Confidence:</span> {rollup && confidenceBadge(rollup.estimate_confidence_rollup)}</div>
+                    <div className="text-xs"><span className="text-muted-foreground">Revision:</span> <Badge variant="outline" className="text-xs">{rollup?.ai_revision_review_status ?? 'N/A'}</Badge></div>
+                    <div className="text-xs"><span className="text-muted-foreground">Site Visit:</span> {rollup?.estimate_site_visit_recommended ? <Badge className="bg-red-100 text-red-800 text-xs">Recommended</Badge> : <Badge variant="outline" className="text-xs">Not needed</Badge>}</div>
                   </div>
-                  <div>
-                    <SectionHeader id="findings" icon={Eye} title="Visible Findings" />
-                    {expandedSections.has('findings') && (
-                      <Card className="mt-1"><CardContent className="py-2 px-3">
-                        <FindingSection content={findings.visible_findings} />
-                      </CardContent></Card>
-                    )}
-                  </div>
-                  <div>
-                    <SectionHeader id="scope" icon={Wrench} title="Likely Scope Items" />
-                    {expandedSections.has('scope') && (
-                      <Card className="mt-1"><CardContent className="py-2 px-3">
-                        <FindingSection content={findings.likely_scope_items} />
-                      </CardContent></Card>
-                    )}
-                  </div>
-                  <div>
-                    <SectionHeader id="risks" icon={Shield} title="Possible Hidden Risks" />
-                    {expandedSections.has('risks') && (
-                      <Card className="mt-1"><CardContent className="py-2 px-3">
-                        <FindingSection content={findings.possible_hidden_risks} />
-                      </CardContent></Card>
-                    )}
-                  </div>
-                  <div>
-                    <SectionHeader id="questions" icon={FileQuestion} title="Missing Information" />
-                    {expandedSections.has('questions') && (
-                      <Card className="mt-1"><CardContent className="py-2 px-3">
-                        <FindingSection content={findings.missing_info_questions} />
-                      </CardContent></Card>
-                    )}
-                  </div>
-                  {findings.suggested_trades && (
-                    <div>
-                      <SectionHeader id="trades" icon={Wrench} title="Suggested Trades" />
-                      {expandedSections.has('trades') && (
-                        <Card className="mt-1"><CardContent className="py-2 px-3">
-                          <div className="flex flex-wrap gap-1">
-                            {findings.suggested_trades.split(',').map((t, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">{t.trim()}</Badge>
-                            ))}
-                          </div>
-                        </CardContent></Card>
-                      )}
-                    </div>
+                  {rollup?.ai_estimate_rollup_summary && (
+                    <p className="text-xs text-muted-foreground mt-2">{rollup.ai_estimate_rollup_summary}</p>
                   )}
-                  <div>
-                    <SectionHeader id="inserts" icon={Sparkles} title="Suggested Items / Allowances / Exclusions" />
-                    {expandedSections.has('inserts') && (
-                      <Card className="mt-1"><CardContent className="py-2 px-3 space-y-2">
-                        {findings.suggested_line_items && <div><p className="text-xs font-medium text-muted-foreground mb-1">Line Items (Draft)</p><FindingSection content={findings.suggested_line_items} /></div>}
-                        {findings.suggested_allowances && <div><p className="text-xs font-medium text-muted-foreground mb-1">Allowances</p><FindingSection content={findings.suggested_allowances} /></div>}
-                        {findings.suggested_exclusions && <div><p className="text-xs font-medium text-muted-foreground mb-1">Exclusions</p><FindingSection content={findings.suggested_exclusions} /></div>}
-                        {findings.suggested_assumptions && <div><p className="text-xs font-medium text-muted-foreground mb-1">Assumptions</p><FindingSection content={findings.suggested_assumptions} /></div>}
-                      </CardContent></Card>
-                    )}
-                  </div>
+                  <Button size="sm" variant="outline" onClick={updateEstimateRollup} className="text-xs h-7 w-full mt-2">
+                    <RefreshCw className="h-3 w-3 mr-1" />Update Estimate Rollup
+                  </Button>
+                </CardContent>
+              </Card>
 
-                  {/* Site Visit Toggle */}
-                  <div className="flex items-center gap-2 py-2">
-                    <Switch
-                      checked={estimate.site_visit_required ?? findings.site_visit_required}
-                      onCheckedChange={v => onUpdate({ site_visit_required: v })}
-                    />
-                    <Label className="text-xs">Mark: Site Visit Required</Label>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-6">
-                  <Sparkles className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-                  <p className="text-xs text-muted-foreground">
-                    Upload photos, enter notes or voice transcript, then click <strong>Analyze</strong>.
-                  </p>
-                </div>
+              {/* Area Breakdown */}
+              {areas.length > 0 && (
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs">Area Breakdown</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 space-y-2">
+                    {areas.map(area => (
+                      <div key={area.id} className="flex items-center justify-between border rounded p-2">
+                        <div className="flex items-center gap-2">
+                          <Home className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs font-medium">{area.area_name || area.area_type}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {confidenceBadge(area.confidence)}
+                          {area.site_visit_flag && <MapPin className="h-3 w-3 text-red-500" />}
+                          {area.revision_status !== 'Original' && (
+                            <Badge variant="outline" className="text-xs">{area.revision_status}</Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Top risks and missing info across all areas */}
+              {areas.some(a => a.possible_hidden_risks) && (
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> All Area Risks</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3">
+                    {areas.filter(a => a.possible_hidden_risks).map(a => (
+                      <div key={a.id} className="mb-2">
+                        <p className="text-xs font-medium text-muted-foreground mb-0.5">{a.area_name || a.area_type}:</p>
+                        <FindingSection content={a.possible_hidden_risks} />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {areas.some(a => a.missing_info_questions) && (
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs flex items-center gap-1.5"><FileQuestion className="h-3.5 w-3.5" /> All Missing Info</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3">
+                    {areas.filter(a => a.missing_info_questions).map(a => (
+                      <div key={a.id} className="mb-2">
+                        <p className="text-xs font-medium text-muted-foreground mb-0.5">{a.area_name || a.area_type}:</p>
+                        <FindingSection content={a.missing_info_questions} />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
               )}
             </div>
           </ScrollArea>
