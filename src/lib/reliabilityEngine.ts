@@ -25,7 +25,7 @@ const REQUIRED_SCOPE_ITEMS: Record<ProjectType, string[]> = {
     'Paint', 'Countertops', 'Cabinetry',
   ],
   'Small Job': [
-    'Labor', 'Materials',
+    'Labor',
   ],
 };
 
