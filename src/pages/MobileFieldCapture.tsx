@@ -8,9 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PWAInstallGuide } from '@/components/PWAInstallGuide';
+import { MobilePhotoCapture } from '@/components/mobile/MobilePhotoCapture';
+import { MobileVoiceCapture } from '@/components/mobile/MobileVoiceCapture';
+import { MobileNotesCapture } from '@/components/mobile/MobileNotesCapture';
 import {
-  Camera, Mic, MapPin, Plus, ChevronRight, Home, FileText,
-  Upload, ImagePlus, Navigation, CheckCircle, AlertTriangle, Loader2
+  Camera, Mic, MapPin, Plus, ChevronRight, FileText,
+  Navigation, CheckCircle, AlertTriangle, Loader2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,11 +24,15 @@ interface AreaSummary {
   area_sequence: number;
   uploaded_photo_count: number;
   voice_capture_status: string;
+  voice_transcript_raw: string;
+  notes_text: string;
   merged_analysis_status: string;
   confidence: string;
   site_visit_flag: boolean;
   quick_tags: string;
 }
+
+type CaptureTab = 'photos' | 'voice' | 'notes';
 
 export default function MobileFieldCapture() {
   const { id: estimateId } = useParams();
@@ -35,7 +42,9 @@ export default function MobileFieldCapture() {
   const [estimates, setEstimates] = useState<Estimate[]>([]);
   const [areas, setAreas] = useState<AreaSummary[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<string>('');
+  const [estimateDbId, setEstimateDbId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<CaptureTab>('photos');
   const [geoStatus, setGeoStatus] = useState<'idle' | 'capturing' | 'done' | 'denied'>('idle');
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -59,8 +68,9 @@ export default function MobileFieldCapture() {
       if (est) {
         const { data: dbEst } = await supabase.from('estimates').select('id').eq('estimate_id', estimateId).maybeSingle();
         if (dbEst) {
+          setEstimateDbId(dbEst.id);
           const { data: areaData } = await supabase.from('estimate_areas')
-            .select('id,area_id,area_name,area_sequence,uploaded_photo_count,voice_capture_status,merged_analysis_status,confidence,site_visit_flag,quick_tags')
+            .select('id,area_id,area_name,area_sequence,uploaded_photo_count,voice_capture_status,voice_transcript_raw,notes_text,merged_analysis_status,confidence,site_visit_flag,quick_tags')
             .eq('estimate_id', dbEst.id)
             .order('area_sequence');
           setAreas((areaData || []) as AreaSummary[]);
@@ -97,6 +107,52 @@ export default function MobileFieldCapture() {
   }, [toast]);
 
   const selectedArea = areas.find(a => a.area_id === selectedAreaId);
+
+  // Handlers for capture components
+  const handlePhotoUploaded = useCallback(async (url: string, caption: string) => {
+    if (!estimateDbId || !selectedArea) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('estimate_media').insert({
+      estimate_id: estimateDbId,
+      media_id: crypto.randomUUID(),
+      file_url: url,
+      caption,
+      user_id: user.id,
+    });
+
+    // Increment area photo count
+    await supabase.from('estimate_areas')
+      .update({ uploaded_photo_count: (selectedArea.uploaded_photo_count || 0) + 1 })
+      .eq('id', selectedArea.id);
+
+    // Refresh area data
+    loadData();
+  }, [estimateDbId, selectedArea, loadData]);
+
+  const handleSaveTranscript = useCallback(async (transcript: string) => {
+    if (!selectedArea) return;
+    await supabase.from('estimate_areas')
+      .update({
+        voice_transcript_raw: transcript,
+        voice_capture_status: 'Captured',
+        voice_last_updated_at: new Date().toISOString(),
+      })
+      .eq('id', selectedArea.id);
+    loadData();
+  }, [selectedArea, loadData]);
+
+  const handleSaveNotes = useCallback(async (notes: string, tags: string[]) => {
+    if (!selectedArea) return;
+    await supabase.from('estimate_areas')
+      .update({
+        notes_text: notes,
+        quick_tags: tags.join(', '),
+      })
+      .eq('id', selectedArea.id);
+    loadData();
+  }, [selectedArea, loadData]);
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
@@ -221,23 +277,55 @@ export default function MobileFieldCapture() {
         </div>
       )}
 
-      {/* Sticky Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border p-3 flex gap-2 z-50 safe-area-pb">
-        <Button className="flex-1 h-14 text-sm flex-col gap-0.5"
-          onClick={() => navigate(`/estimates/${estimate.estimate_id}`)}>
-          <Camera className="h-5 w-5" />
-          Photos
-        </Button>
-        <Button className="flex-1 h-14 text-sm flex-col gap-0.5" variant="secondary"
-          onClick={() => navigate(`/estimates/${estimate.estimate_id}`)}>
-          <Mic className="h-5 w-5" />
-          Voice
-        </Button>
-        <Button className="flex-1 h-14 text-sm flex-col gap-0.5" variant="outline"
-          onClick={() => navigate(`/estimates/${estimate.estimate_id}`)}>
-          <FileText className="h-5 w-5" />
-          Notes
-        </Button>
+      {/* Capture Content Area */}
+      {selectedArea && estimateDbId && (
+        <div className="min-h-[200px]">
+          {activeTab === 'photos' && (
+            <MobilePhotoCapture
+              estimateDbId={estimateDbId}
+              areaId={selectedArea.area_id}
+              areaName={selectedArea.area_name || `Area ${selectedArea.area_sequence + 1}`}
+              onPhotoUploaded={handlePhotoUploaded}
+              isOnline={isOnline}
+            />
+          )}
+          {activeTab === 'voice' && (
+            <MobileVoiceCapture
+              estimateDbId={estimateDbId}
+              areaId={selectedArea.area_id}
+              areaName={selectedArea.area_name || `Area ${selectedArea.area_sequence + 1}`}
+              existingTranscript={selectedArea.voice_transcript_raw || ''}
+              onSaveTranscript={handleSaveTranscript}
+              isOnline={isOnline}
+            />
+          )}
+          {activeTab === 'notes' && (
+            <MobileNotesCapture
+              estimateDbId={estimateDbId}
+              areaId={selectedArea.area_id}
+              areaName={selectedArea.area_name || `Area ${selectedArea.area_sequence + 1}`}
+              existingNotes={selectedArea.notes_text || ''}
+              quickTags={selectedArea.quick_tags ? selectedArea.quick_tags.split(',').map(t => t.trim()).filter(Boolean) : []}
+              onSaveNotes={handleSaveNotes}
+              isOnline={isOnline}
+            />
+          )}
+        </div>
+      )}
+
+      {!selectedArea && areas.length > 0 && (
+        <Card>
+          <CardContent className="py-6 text-center text-muted-foreground text-sm">
+            Select an area above to start capturing.
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sticky Bottom Tab Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border p-2 flex gap-1 z-50 safe-area-pb">
+        <TabButton active={activeTab === 'photos'} onClick={() => setActiveTab('photos')} icon={<Camera className="h-5 w-5" />} label="Photos" />
+        <TabButton active={activeTab === 'voice'} onClick={() => setActiveTab('voice')} icon={<Mic className="h-5 w-5" />} label="Voice" />
+        <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<FileText className="h-5 w-5" />} label="Notes" />
       </div>
     </div>
   );
@@ -251,5 +339,21 @@ function MiniStat({ label, value }: { label: string; value: number }) {
         <p className="text-xs text-muted-foreground">{label}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg transition-colors text-sm ${
+        active
+          ? 'bg-primary text-primary-foreground'
+          : 'text-muted-foreground hover:bg-muted'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
