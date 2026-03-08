@@ -696,17 +696,222 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
             {pendingCount > 0 && <Badge variant="secondary" className="text-xs">{pendingCount} pending</Badge>}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Room-by-room intake. All changes go through review queue.</p>
+        <p className="text-xs text-muted-foreground mt-1">Initial intake → room-by-room → review queue. All changes require approval.</p>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-4 mt-2 grid grid-cols-4 h-8">
+        <TabsList className="mx-4 mt-2 grid grid-cols-5 h-8">
+          <TabsTrigger value="initial" className="text-xs">Intake</TabsTrigger>
           <TabsTrigger value="areas" className="text-xs">Areas</TabsTrigger>
           <TabsTrigger value="capture" className="text-xs">Capture</TabsTrigger>
           <TabsTrigger value="queue" className="text-xs">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
           <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
         </TabsList>
+
+        {/* ═══ INITIAL INTAKE TAB (Patch 3) ═══ */}
+        <TabsContent value="initial" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {isApproved && (
+                <Card className="border-amber-300 bg-amber-50">
+                  <CardContent className="py-2 px-3 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                    <p className="text-xs text-amber-800">Approved estimate — intake results are advisory only. No fields will be updated.</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Typed Description Input */}
+              <Card>
+                <CardHeader className="py-2 px-3">
+                  <CardTitle className="text-xs flex items-center gap-1.5">
+                    <ClipboardList className="h-3.5 w-3.5" /> Project Description
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 space-y-2">
+                  <Textarea
+                    value={initialIntakeDesc}
+                    onChange={e => setInitialIntakeDesc(e.target.value)}
+                    placeholder="Describe the project scope, conditions, customer requests... e.g. 'Full gut rehab of 2BR/1BA unit. Needs new kitchen, bathroom tile, all electrical updated. Tenant moved out, unit is empty. Water damage visible near tub.'"
+                    className="text-xs min-h-[100px]"
+                    disabled={initialIntakeLoading}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Customer Goal</Label>
+                      <Input
+                        value={initialIntakeGoal}
+                        onChange={e => setInitialIntakeGoal(e.target.value)}
+                        placeholder="e.g. Rent-ready, flip for sale"
+                        className="text-xs h-8 mt-1"
+                        disabled={initialIntakeLoading}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Urgency</Label>
+                      <Input
+                        value={initialIntakeUrgency}
+                        onChange={e => setInitialIntakeUrgency(e.target.value)}
+                        placeholder="e.g. ASAP, 30 days, flexible"
+                        className="text-xs h-8 mt-1"
+                        disabled={initialIntakeLoading}
+                      />
+                    </div>
+                  </div>
+                  {/* Context from estimate */}
+                  {(estimate.project_type || estimate.sqft) && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {estimate.project_type && <Badge variant="outline" className="text-xs">{estimate.project_type}</Badge>}
+                      {estimate.sqft ? <Badge variant="outline" className="text-xs">{estimate.sqft} sqft</Badge> : null}
+                      {estimate.finish_level && <Badge variant="outline" className="text-xs">{estimate.finish_level}</Badge>}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Action Button */}
+              <Button
+                onClick={analyzeInitialIntake}
+                disabled={initialIntakeLoading || (!initialIntakeDesc.trim() && !estimate.internal_notes)}
+                className="w-full text-xs h-9"
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                {initialIntakeLoading ? 'Analyzing Initial Intake…' : 'Analyze Initial Intake'}
+              </Button>
+
+              {/* ─── Structured Results ─── */}
+              {initialIntakeResult && (
+                <div className="space-y-3">
+                  {/* Confidence Badge */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">Confidence:</span>
+                    {confidenceBadge(initialIntakeResult.confidence)}
+                    {initialIntakeResult.site_visit_recommended && (
+                      <Badge className="bg-red-100 text-red-800 border-red-300 text-xs">
+                        <MapPin className="h-3 w-3 mr-1" />Site Visit Recommended
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Summary of Request */}
+                  <Card>
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> Summary of Request</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-3">
+                      <p className="text-xs text-foreground">{initialIntakeResult.summary_of_request}</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Probable Work Categories */}
+                  {initialIntakeResult.probable_work_categories?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Probable Work Categories</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {initialIntakeResult.probable_work_categories.map((cat, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{cat}</Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Likely Trades */}
+                  {initialIntakeResult.likely_trades?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5" /> Likely Trades</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {initialIntakeResult.likely_trades.map((trade, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">{trade}</Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Obvious Unknowns */}
+                  {initialIntakeResult.obvious_unknowns?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> Obvious Unknowns</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ul className="space-y-1">
+                          {initialIntakeResult.obvious_unknowns.map((u, i) => (
+                            <li key={i} className="text-xs text-foreground flex items-start gap-1.5">
+                              <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                              {u}
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Next Questions */}
+                  {initialIntakeResult.next_questions?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><FileQuestion className="h-3.5 w-3.5" /> Follow-Up Questions ({initialIntakeResult.next_questions.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ol className="space-y-2">
+                          {initialIntakeResult.next_questions.map((q, i) => (
+                            <li key={i} className="text-xs border rounded p-2">
+                              <p className="font-medium text-foreground">{i + 1}. {q.question}</p>
+                              <p className="text-muted-foreground mt-0.5">Why: {q.why_it_matters}</p>
+                            </li>
+                          ))}
+                        </ol>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Queue Suggestions Preview */}
+                  {initialIntakeResult.review_queue_items?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5">
+                          <Send className="h-3.5 w-3.5" /> Queue Suggestions
+                          <Badge variant="secondary" className="text-xs">{initialIntakeResult.review_queue_items.length} created</Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ul className="space-y-1.5">
+                          {initialIntakeResult.review_queue_items.map((item, i) => (
+                            <li key={i} className="text-xs border rounded p-2 flex items-start gap-2">
+                              <Badge variant="outline" className="text-xs shrink-0">{SUGGESTION_TYPE_LABELS[item.suggestion_type as SuggestionType] || item.suggestion_type}</Badge>
+                              <span className="text-foreground">{item.suggested_value}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <Button size="sm" variant="outline" className="text-xs h-7 mt-2 w-full" onClick={() => setActiveTab('queue')}>
+                          View in Review Queue →
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!initialIntakeResult && !initialIntakeLoading && (
+                <div className="text-center py-6">
+                  <Sparkles className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-xs text-muted-foreground">Enter a rough project description above and click "Analyze Initial Intake" to get structured first-pass estimating support.</p>
+                  <p className="text-xs text-muted-foreground mt-1">The AI will identify trades, unknowns, and follow-up questions — no pricing or quantities.</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
 
         {/* ═══ AREAS TAB ═══ */}
         <TabsContent value="areas" className="flex-1 overflow-hidden">
