@@ -820,10 +820,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Missing Info Questions (Patch 7) ───
   const generateMissingInfoQuestions = useCallback(async () => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
+    const dbId = await ensureSaved();
+    if (!dbId) return;
     if (!selectedArea) {
       toast({ title: 'Select an area first', variant: 'destructive' });
       return;
