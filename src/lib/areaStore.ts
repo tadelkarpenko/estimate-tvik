@@ -20,6 +20,8 @@ export const AREA_TYPES: AreaType[] = [
   'Exterior Front', 'Exterior Rear', 'Roof', 'Mechanical Room', 'Other',
 ];
 
+export type MergeAnalysisStatus = 'Not Run' | 'Ready' | 'Complete' | 'Failed';
+
 export interface EstimateArea {
   id?: string;
   area_id: string;
@@ -56,6 +58,19 @@ export interface EstimateArea {
   site_visit_reason: string;
   revision_status: RevisionStatus;
   latest_ai_summary: string;
+  // Patch 6: Merge fields
+  merged_scope_summary: string;
+  merged_visible_facts: string;
+  merged_inferences: string;
+  merged_needs_verification: string;
+  merged_risks: string;
+  merged_trade_detection: string;
+  merged_missing_questions: string;
+  merged_confidence: string;
+  merged_last_updated_at: string | null;
+  merged_analysis_status: MergeAnalysisStatus;
+  latest_merge_batch_id: string;
+  conflict_summary: string;
   created_at?: string;
   updated_at?: string;
 }

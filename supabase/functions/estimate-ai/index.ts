@@ -550,6 +550,153 @@ Photo captions: ${data.captions || 'None'}`
 
       return new Response(JSON.stringify({ structured: photoStructured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    } else if (action === "area_merge_analysis") {
+      // Patch 6: Merge/reconciliation block — combines typed, voice, and photo outputs
+      const mergeSystemPrompt = `You are TVIK LLC Merge Analysis AI — a structured construction estimator reconciliation tool.
+
+Your job is to merge already-processed structured outputs from typed intake, voice walkthrough, and photo analysis into one coherent merged estimate picture.
+
+CRITICAL RULES:
+- You are a STRUCTURED RECONCILER, not a chatbot.
+- Only work with upstream structured outputs provided to you.
+- Separate visible facts from inferences from needs-verification items.
+- Never invent measurements, dimensions, or quantities.
+- Never finalize pricing.
+- If sources conflict materially, lower confidence and surface the conflict.
+- If sources align, confidence may increase.
+- If one or more upstream sources are missing, proceed conservatively and lower confidence.
+- Treat disagreement as a feature, not an error.
+
+MERGE RULES:
+- visible facts must be evidence-backed from upstream outputs
+- likely inferences must stay separate from visible facts
+- unresolved items go into needs_verification
+- if sources align → confidence may increase
+- if sources partially align → confidence usually Medium
+- if sources materially conflict → confidence Low unless strong evidence resolves it
+- if conflict materially affects estimate reliability → create missing_info or site_visit queue suggestions
+
+CONFIDENCE RULES:
+- High = all sources agree, clear scope, low uncertainty
+- Medium = partial agreement, some clarification needed
+- Low = material conflicts, missing sources, major uncertainty
+
+Call the extract_merge_analysis function with the structured output.`;
+
+      const mergeUserPrompt = `Merge the following upstream structured outputs into one reconciled estimate picture.
+
+Area: ${data.area_name || 'Unknown'} (${data.area_type || 'Unknown'})
+Project type: ${data.project_type || 'Unknown'}
+Current status: ${data.current_status || 'Draft'}
+Quick tags: ${data.quick_tags || 'None'}
+
+=== TYPED INTAKE OUTPUT ===
+${data.typed_intake_output || 'Not available'}
+
+=== VOICE WALKTHROUGH OUTPUT ===
+${data.voice_walkthrough_output || 'Not available'}
+
+=== PHOTO ANALYSIS OUTPUT ===
+${data.photo_analysis_output || 'Not available'}
+
+=== CURRENT LINE ITEMS (reference only) ===
+${data.current_line_items || 'None'}
+
+=== CURRENT RISK NOTES (reference only) ===
+${data.current_risk_notes || 'None'}
+
+Reconcile overlaps, surface conflicts, and produce a merged estimate picture. Be conservative.`;
+
+      const mergeToolBody = {
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: mergeSystemPrompt },
+          { role: "user", content: mergeUserPrompt },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_merge_analysis",
+              description: "Extract structured merged analysis from reconciled upstream outputs.",
+              parameters: {
+                type: "object",
+                properties: {
+                  merged_scope_summary: { type: "string", description: "2-4 sentence merged scope summary from all sources" },
+                  merged_visible_facts: { type: "string", description: "Bullet list of evidence-backed visible facts from all sources" },
+                  merged_inferences: { type: "string", description: "Bullet list of likely inferences supported by combined evidence" },
+                  merged_needs_verification: { type: "string", description: "Bullet list of unresolved items that need clarification or site visit" },
+                  merged_risks: { type: "string", description: "Bullet list of combined risks from all sources" },
+                  merged_trade_detection: { type: "string", description: "Comma-separated list of trades from combined evidence" },
+                  merged_missing_questions: { type: "string", description: "Numbered list of remaining follow-up questions" },
+                  merged_confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                  conflict_summary: { type: "string", description: "Summary of material conflicts between sources. Empty if no conflicts." },
+                  site_visit_recommended: { type: "boolean" },
+                  site_visit_reason: { type: "string", description: "Why site visit is recommended, if applicable" },
+                  review_queue_items: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        suggestion_type: { type: "string", enum: ["missing_info", "risk_note", "trade_detection", "site_visit", "allowance", "assumption", "exclusion", "internal_note"] },
+                        suggested_value: { type: "string" },
+                        apply_target: { type: "string" },
+                        confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                        evidence_summary: { type: "string" },
+                        reason_for_suggestion: { type: "string" }
+                      },
+                      required: ["suggestion_type", "suggested_value", "confidence", "evidence_summary", "reason_for_suggestion"],
+                      additionalProperties: false
+                    },
+                    description: "Queue items from merged analysis when evidence supports them"
+                  }
+                },
+                required: ["merged_scope_summary", "merged_visible_facts", "merged_inferences", "merged_needs_verification", "merged_risks", "merged_trade_detection", "merged_missing_questions", "merged_confidence", "conflict_summary", "site_visit_recommended", "review_queue_items"],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "extract_merge_analysis" } },
+      };
+
+      const mergeResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(mergeToolBody),
+      });
+
+      if (!mergeResp.ok) {
+        const status = mergeResp.status;
+        if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("AI gateway error:", status, await mergeResp.text());
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const mergeResult = await mergeResp.json();
+      const mergeToolCall = mergeResult.choices?.[0]?.message?.tool_calls?.[0];
+      let mergeStructured: any = {};
+      if (mergeToolCall?.function?.arguments) {
+        try {
+          mergeStructured = typeof mergeToolCall.function.arguments === 'string'
+            ? JSON.parse(mergeToolCall.function.arguments)
+            : mergeToolCall.function.arguments;
+        } catch {
+          mergeStructured = { merged_scope_summary: "Failed to parse", merged_visible_facts: "", merged_inferences: "", merged_needs_verification: "", merged_risks: "", merged_trade_detection: "", merged_missing_questions: "", merged_confidence: "Low", conflict_summary: "Parse error", site_visit_recommended: true, review_queue_items: [] };
+        }
+      } else {
+        const content = mergeResult.choices?.[0]?.message?.content || "";
+        try { mergeStructured = JSON.parse(content); } catch {
+          mergeStructured = { merged_scope_summary: content || "No analysis", merged_visible_facts: "", merged_inferences: "", merged_needs_verification: "", merged_risks: "", merged_trade_detection: "", merged_missing_questions: "", merged_confidence: "Low", conflict_summary: "", site_visit_recommended: true, review_queue_items: [] };
+        }
+      }
+
+      return new Response(JSON.stringify({ structured: mergeStructured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else if (action === "intake") {
       // AI Intake Assistant - structured analysis
       const workflow = data.workflow || "intake_fresh";
