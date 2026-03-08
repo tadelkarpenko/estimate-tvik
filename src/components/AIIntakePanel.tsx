@@ -546,7 +546,126 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [selectedArea, estimateDbId, estimate, media, isApproved, toast, onUpdate]);
 
-  // ─── Send Area to Review Queue ───
+  // ─── Photo Analysis (Patch 5) ───
+  const analyzePhotos = useCallback(async () => {
+    if (!estimateDbId || media.length === 0) {
+      toast({ title: 'Upload photos first', variant: 'destructive' });
+      return;
+    }
+    if (isApproved) {
+      toast({ title: 'Estimate is approved', description: 'Photo analysis is advisory only.', variant: 'destructive' });
+    }
+
+    setPhotoAnalysisLoading(true);
+    const batchId = crypto.randomUUID();
+
+    try {
+      const imageUrls = media.map(m => m.file_url).filter(Boolean);
+      const captions = media.map(m => m.caption).filter(Boolean).join('; ');
+
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'area_photo_analysis',
+          data: {
+            image_urls: imageUrls.slice(0, 8),
+            area_name: selectedArea?.area_name || '',
+            area_type: selectedArea?.area_type || '',
+            project_type: estimate.project_type || '',
+            quick_tags: selectedArea?.quick_tags || '',
+            notes: selectedArea?.notes_text || '',
+            captions,
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setPhotoAnalysisResult(structured);
+
+      // Update area fields if area is selected and not approved
+      if (selectedArea && !isApproved) {
+        const isLowConf = structured.image_confidence === 'Low';
+        const updatedArea: EstimateArea = {
+          ...selectedArea,
+          photo_analysis_status: 'Complete',
+          photo_analysis_summary: structured.photo_summary || '',
+          latest_photo_batch_id: batchId,
+          visible_findings: structured.visible_facts || selectedArea.visible_findings,
+          likely_scope_items: structured.probable_scope_items || selectedArea.likely_scope_items,
+          possible_hidden_risks: structured.probable_hidden_risks || selectedArea.possible_hidden_risks,
+          ai_detected_trades: structured.trade_detection || selectedArea.ai_detected_trades,
+          missing_visual_information: structured.missing_visual_information || '',
+          confidence: structured.image_confidence || selectedArea.confidence,
+          low_confidence_warning: isLowConf || selectedArea.low_confidence_warning,
+          site_visit_flag: structured.site_visit_recommended || selectedArea.site_visit_flag,
+          site_visit_reason: structured.site_visit_reason || selectedArea.site_visit_reason,
+          uploaded_photo_count: media.length,
+        };
+
+        await saveEstimateArea(updatedArea);
+        setAreas(prev => prev.map(a => a.id === selectedArea.id ? updatedArea : a));
+      }
+
+      // Update estimate-level rollup fields
+      if (!isApproved) {
+        onUpdate({
+          photo_count: media.length,
+          photo_analysis_summary: structured.photo_summary || '',
+        } as any);
+      }
+
+      // Create queue items
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const newSuggestions = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          area_id: selectedArea?.id || null,
+          source_type: 'photo' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'internal_note',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Photo Analysis AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || '',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'photo_analysis',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: selectedArea?.area_name || 'Photos',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `photo-${estimateDbId}-${selectedArea?.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(newSuggestions);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Photo analysis complete', description: `${structured.image_confidence} confidence. ${structured.review_queue_items?.length || 0} suggestions queued.` });
+    } catch (e: any) {
+      if (selectedArea) {
+        const failedArea = { ...selectedArea, photo_analysis_status: 'Failed' as const };
+        setAreas(prev => prev.map(a => a.id === selectedArea.id ? failedArea : a));
+      }
+      toast({ title: 'Photo analysis failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setPhotoAnalysisLoading(false);
+    }
+  }, [estimateDbId, selectedArea, media, estimate, isApproved, toast, onUpdate]);
+
+
   const sendAreaToQueue = async () => {
     if (!areaFindings || !estimateDbId || !selectedArea) {
       toast({ title: 'Run analysis first', variant: 'destructive' });
