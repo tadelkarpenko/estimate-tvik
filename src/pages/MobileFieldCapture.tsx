@@ -197,7 +197,7 @@ export default function MobileFieldCapture() {
                   <SelectItem key={a.area_id} value={a.area_id} className="py-2">
                     <span className="flex items-center gap-2">
                       {a.area_name || `Area ${a.area_sequence + 1}`}
-                      {a.site_visit_flag && <AlertTriangle className="h-3 w-3 text-yellow-500" />}
+                      {a.site_visit_flag && <AlertTriangle className="h-3 w-3 text-destructive" />}
                       <Badge variant="secondary" className="text-xs ml-1">{a.uploaded_photo_count} 📷</Badge>
                     </span>
                   </SelectItem>

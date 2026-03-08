@@ -34,7 +34,7 @@ export function PWAInstallGuide() {
         <CardTitle className="text-base flex items-center gap-2">
           <Smartphone className="h-4 w-4 text-primary" />
           {isStandalone ? 'Field App Active' : 'Install as Field App'}
-          {isStandalone && <Badge className="bg-green-600 text-white text-xs">Installed</Badge>}
+          {isStandalone && <Badge className="bg-primary text-primary-foreground text-xs">Installed</Badge>}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
