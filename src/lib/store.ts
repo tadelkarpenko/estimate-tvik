@@ -380,6 +380,24 @@ function rowToEstimate(r: any): Estimate {
     volatility_reviewed: r.volatility_reviewed ?? false,
     completeness_score: Number(r.completeness_score ?? 0),
     calc_status: r.calc_status || 'Stale',
+    // AI Intake fields
+    ai_intake_summary: r.ai_intake_summary || '',
+    photo_analysis_summary: r.photo_analysis_summary || '',
+    visible_findings: r.visible_findings || '',
+    likely_scope_items: r.likely_scope_items || '',
+    possible_hidden_risks: r.possible_hidden_risks || '',
+    missing_info_questions: r.missing_info_questions || '',
+    suggested_allowances: r.suggested_allowances || '',
+    suggested_exclusions: r.suggested_exclusions || '',
+    suggested_assumptions: r.suggested_assumptions || '',
+    suggested_line_items: r.suggested_line_items || '',
+    ai_detected_trades: r.ai_detected_trades || '',
+    site_visit_required: r.site_visit_required ?? false,
+    ai_scope_confidence: r.ai_scope_confidence || 'Medium',
+    photo_count: Number(r.photo_count ?? 0),
+    intake_last_updated_at: r.intake_last_updated_at || null,
+    revision_needed_warning: r.revision_needed_warning ?? false,
+    ai_apply_status: r.ai_apply_status || 'Not Applied',
   } as Estimate;
 }
 
