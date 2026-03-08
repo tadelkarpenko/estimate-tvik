@@ -1281,6 +1281,74 @@ export type Database = {
           },
         ]
       }
+      estimate_write_execution_log: {
+        Row: {
+          applied_fields: string
+          applied_line_items: string
+          created_at: string
+          created_audit_entries: string
+          errors: string
+          estimate_id: string
+          estimate_version: string
+          execution_id: string
+          execution_status: string
+          id: string
+          idempotency_check_passed: boolean
+          requires_reapproval_applied: boolean
+          status_updates: string
+          summary: string
+          user_id: string
+          version_check_passed: boolean
+          write_plan_id: string
+        }
+        Insert: {
+          applied_fields?: string
+          applied_line_items?: string
+          created_at?: string
+          created_audit_entries?: string
+          errors?: string
+          estimate_id: string
+          estimate_version?: string
+          execution_id?: string
+          execution_status?: string
+          id?: string
+          idempotency_check_passed?: boolean
+          requires_reapproval_applied?: boolean
+          status_updates?: string
+          summary?: string
+          user_id: string
+          version_check_passed?: boolean
+          write_plan_id?: string
+        }
+        Update: {
+          applied_fields?: string
+          applied_line_items?: string
+          created_at?: string
+          created_audit_entries?: string
+          errors?: string
+          estimate_id?: string
+          estimate_version?: string
+          execution_id?: string
+          execution_status?: string
+          id?: string
+          idempotency_check_passed?: boolean
+          requires_reapproval_applied?: boolean
+          status_updates?: string
+          summary?: string
+          user_id?: string
+          version_check_passed?: boolean
+          write_plan_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_write_execution_log_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_write_plans: {
         Row: {
           allowances_to_append: string

@@ -30,6 +30,7 @@ import {
 } from '@/lib/areaStore';
 import { saveHealthCheck } from '@/lib/healthCheckStore';
 import { generateWritePlan, saveWritePlan, updateWritePlanStatus, type WritePlan, type WritePlanFieldUpdate, type WritePlanLineItem, type WritePlanAuditEntry } from '@/lib/writePlanStore';
+import { executeWriteback, type ExecutionResult } from '@/lib/writebackEngine';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
@@ -125,6 +126,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [overrideReason, setOverrideReason] = useState('');
   const [writePlan, setWritePlan] = useState<WritePlan | null>(null);
   const [writePlanLoading, setWritePlanLoading] = useState(false);
+  const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
@@ -1148,84 +1150,49 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [estimateDbId, suggestions, estimate, toast]);
 
-  // ─── Execute Write Plan (Patch 9) ───
-  const executeWritePlan = useCallback(async () => {
+  // ─── Execute Write Plan (Patch 10: Controlled Writeback) ───
+  const executeWritePlanControlled = useCallback(async () => {
     if (!writePlan || !estimateDbId) return;
     setWritePlanLoading(true);
+    setExecutionResult(null);
     try {
-      const fieldsToUpdate: WritePlanFieldUpdate[] = JSON.parse(writePlan.fields_to_update || '[]');
-      const auditEntries: WritePlanAuditEntry[] = JSON.parse(writePlan.audit_entries_to_create || '[]');
+      const result = await executeWriteback(writePlan, estimate, estimateDbId);
+      setExecutionResult(result);
 
-      // Build estimate updates from field plan
-      const updates: Partial<Estimate> = {};
-      for (const f of fieldsToUpdate) {
-        if (f.action === 'append') {
-          const existing = (estimate as any)[f.field] || '';
-          (updates as any)[f.field] = existing ? `${existing}\n• ${f.value}` : `• ${f.value}`;
-        } else if (f.action === 'set') {
-          if (f.field === 'site_visit_required') {
-            updates.site_visit_required = f.value === 'true';
-          } else {
-            (updates as any)[f.field] = f.value;
+      if (result.execution_status === 'success' || result.execution_status === 'partial_success') {
+        // Refresh local state
+        const updatedSuggestions = await getSuggestions(estimateDbId);
+        setSuggestions(updatedSuggestions);
+        setWritePlan({ ...writePlan, apply_status: 'applied' as any });
+
+        // Apply local estimate updates for UI sync
+        const fieldUpdates: Partial<Estimate> = {};
+        for (const af of result.applied_fields) {
+          if (af.result === 'applied') {
+            (fieldUpdates as any)[af.field] = af.action === 'set'
+              ? (af.field === 'site_visit_required' ? af.value === 'true' : af.value)
+              : ((estimate as any)[af.field] || '') + (((estimate as any)[af.field] || '') ? `\n• ${af.value}` : `• ${af.value}`);
           }
         }
+        if (result.requires_reapproval_applied && ['Approved', 'Sent'].includes(estimate.status || '')) {
+          fieldUpdates.status = 'Ready for Review' as any;
+        }
+        fieldUpdates.ai_apply_status = 'Applied' as any;
+        onUpdate(fieldUpdates);
+
+        toast({
+          title: result.execution_status === 'success' ? 'Writeback complete' : 'Partial writeback',
+          description: result.summary,
+        });
+      } else {
+        toast({ title: 'Writeback blocked', description: result.summary, variant: 'destructive' });
       }
-
-      // Reapproval: downgrade status if needed
-      if (writePlan.requires_reapproval && (['Approved', 'Sent'] as string[]).includes(estimate.status || '')) {
-        updates.status = 'Ready for Review' as any;
-      }
-
-      updates.ai_apply_status = 'Applied' as any;
-      onUpdate(updates);
-
-      // Mark all approved suggestions as applied
-      const approvable = suggestions.filter(s => s.status === 'approved' || s.status === 'edited');
-      for (const s of approvable) {
-        await updateSuggestionStatus(s.id, 'applied', { approved_by: 'TVIK' });
-      }
-
-      // Create audit records
-      if (auditEntries.length > 0) {
-        const auditRows = auditEntries.map(a => ({
-          audit_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
-          suggestion_id: a.suggestion_id,
-          original_suggestion: a.original_suggestion,
-          final_applied_value: a.final_applied_value,
-          applied_field: a.applied_field,
-          confidence: a.confidence,
-          approved_by: a.approved_by,
-          approved_at: new Date().toISOString(),
-          source_type: a.source_type,
-          area_id: a.area_id || null,
-          suggestion_batch_id: a.suggestion_batch_id || '',
-          apply_run_id: writePlan.apply_run_id,
-          estimate_version: writePlan.estimate_version,
-        }));
-        await insertAppliedAudit(auditRows);
-      }
-
-      // Update write plan status
-      if (writePlan.id) {
-        await updateWritePlanStatus(writePlan.id, 'applied');
-      }
-
-      await onSave();
-      const updatedSuggestions = await getSuggestions(estimateDbId);
-      setSuggestions(updatedSuggestions);
-      setWritePlan({ ...writePlan, apply_status: 'applied' as any });
-
-      toast({ title: 'Write plan applied', description: `${auditEntries.length} changes applied. ${writePlan.requires_reapproval ? 'Estimate moved to Ready for Review.' : ''}` });
     } catch (e: any) {
-      if (writePlan.id) {
-        await updateWritePlanStatus(writePlan.id, 'failed').catch(() => {});
-      }
-      toast({ title: 'Apply failed', description: e.message, variant: 'destructive' });
+      toast({ title: 'Execution failed', description: e.message, variant: 'destructive' });
     } finally {
       setWritePlanLoading(false);
     }
-  }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, onSave, toast]);
+  }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, toast]);
 
   // ─── Apply Approved Suggestions (legacy) ───
   const applyApprovedSuggestions = async () => {
@@ -2924,19 +2891,67 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                     </Card>
 
                     {/* Execute button */}
-                    {writePlan.apply_status === 'staged' && (
+                    {writePlan.apply_status === 'staged' && !executionResult && (
                       <Button
                         size="sm"
                         className="w-full"
                         variant="gold"
                         disabled={writePlanLoading}
-                        onClick={executeWritePlan}
+                        onClick={executeWritePlanControlled}
                       >
-                        {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Applying…</> : <><CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Execute Write Plan</>}
+                        {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Executing…</> : <><CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Execute Write Plan</>}
                       </Button>
                     )}
 
-                    {writePlan.apply_status === 'applied' && (
+                    {/* Execution Result Display (Patch 10) */}
+                    {executionResult && (
+                      <Card className={
+                        executionResult.execution_status === 'success' ? 'border-emerald-300 bg-emerald-50' :
+                        executionResult.execution_status === 'partial_success' ? 'border-amber-300 bg-amber-50' :
+                        executionResult.execution_status === 'blocked' ? 'border-orange-300 bg-orange-50' :
+                        'border-destructive bg-destructive/10'
+                      }>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs flex items-center gap-1.5">
+                            {executionResult.execution_status === 'success' && <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />}
+                            {executionResult.execution_status === 'partial_success' && <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+                            {executionResult.execution_status === 'blocked' && <Shield className="h-3.5 w-3.5 text-orange-600" />}
+                            {executionResult.execution_status === 'failed' && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
+                            Execution: {executionResult.execution_status.replace('_', ' ')}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-2">
+                          <p className="text-xs">{executionResult.summary}</p>
+                          <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                            <div>Version check: <Badge variant={executionResult.version_check_passed ? 'outline' : 'destructive'} className="text-[9px]">{executionResult.version_check_passed ? 'Passed' : 'Failed'}</Badge></div>
+                            <div>Idempotency: <Badge variant={executionResult.idempotency_check_passed ? 'outline' : 'destructive'} className="text-[9px]">{executionResult.idempotency_check_passed ? 'Passed' : 'Failed'}</Badge></div>
+                            <div>Fields applied: <strong>{executionResult.applied_fields.filter(f => f.result === 'applied').length}</strong></div>
+                            <div>Fields skipped: <strong>{executionResult.applied_fields.filter(f => f.result === 'skipped_duplicate').length}</strong></div>
+                            <div>Line items: <strong>{executionResult.applied_line_items.filter(l => l.result === 'applied').length}</strong></div>
+                            <div>Audit entries: <strong>{executionResult.created_audit_entries.length}</strong></div>
+                            <div>Reapproval: <Badge variant={executionResult.requires_reapproval_applied ? 'default' : 'outline'} className="text-[9px]">{executionResult.requires_reapproval_applied ? 'Yes' : 'No'}</Badge></div>
+                          </div>
+                          {executionResult.status_updates.length > 0 && (
+                            <div className="text-[10px] space-y-0.5">
+                              <p className="font-medium">Status changes:</p>
+                              {executionResult.status_updates.map((su, i) => (
+                                <p key={i}>{su.field}: {su.old_value} → {su.new_value}</p>
+                              ))}
+                            </div>
+                          )}
+                          {executionResult.errors.length > 0 && (
+                            <div className="text-[10px] text-destructive space-y-0.5">
+                              <p className="font-medium">Errors:</p>
+                              {executionResult.errors.map((err, i) => (
+                                <p key={i}>• {err}</p>
+                              ))}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {writePlan.apply_status === 'applied' && !executionResult && (
                       <Card className="border-emerald-300 bg-emerald-50">
                         <CardContent className="px-3 py-3">
                           <p className="text-xs flex items-center gap-1.5 text-emerald-800">
