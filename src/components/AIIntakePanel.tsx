@@ -1558,7 +1558,21 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                 </CardHeader>
                 <CardContent className="px-3 pb-3">
                   {estimateDbId ? (
-                    <MediaUploader folder="estimates" onUploaded={async () => {
+                    <MediaUploader folder="estimates" onUploaded={async (url: string, caption: string) => {
+                      // Save estimate_media record so parent can track it
+                      const { supabase } = await import('@/integrations/supabase/client');
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (user && estimateDbId) {
+                        await supabase.from('estimate_media').insert({
+                          estimate_id: estimateDbId,
+                          user_id: user.id,
+                          media_id: crypto.randomUUID(),
+                          file_url: url,
+                          caption: caption || '',
+                          include_in_internal_pdf: true,
+                          include_in_public_pdf: false,
+                        } as any);
+                      }
                       onMediaChange();
                       if (selectedArea) updateArea('uploaded_photo_count', selectedArea.uploaded_photo_count + 1);
                     }} />
