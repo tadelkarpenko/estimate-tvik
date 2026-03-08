@@ -28,6 +28,7 @@ import {
   computeEstimateRollup, AREA_TYPES, QUICK_TAGS_EXTENDED,
   type EstimateArea, type AreaType, type EstimateRollup,
 } from '@/lib/areaStore';
+import { saveHealthCheck } from '@/lib/healthCheckStore';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
