@@ -11,6 +11,7 @@ export type RevisionStatus = 'Original' | 'Updated' | 'Needs Review';
 export type AIConfidence = 'High' | 'Medium' | 'Low';
 export type VoiceCaptureStatus = 'Not Started' | 'Recording' | 'Paused' | 'Captured' | 'Transcribed' | 'Failed';
 export type VoiceAnalysisStatus = 'Not Run' | 'Ready' | 'Complete' | 'Failed';
+export type PhotoAnalysisStatus = 'Not Run' | 'Ready' | 'Complete' | 'Failed';
 export type VoiceTranscriptSource = '' | 'recorded' | 'pasted' | 'imported';
 
 export const AREA_TYPES: AreaType[] = [
@@ -36,6 +37,10 @@ export interface EstimateArea {
   voice_analysis_status: VoiceAnalysisStatus;
   latest_voice_batch_id: string;
   uploaded_photo_count: number;
+  latest_photo_batch_id: string;
+  photo_analysis_status: 'Not Run' | 'Ready' | 'Complete' | 'Failed';
+  photo_analysis_summary: string;
+  missing_visual_information: string;
   quick_tags: string;
   visible_findings: string;
   likely_scope_items: string;
@@ -92,6 +97,10 @@ export const saveEstimateArea = async (area: EstimateArea): Promise<string> => {
     voice_analysis_status: area.voice_analysis_status,
     latest_voice_batch_id: area.latest_voice_batch_id,
     uploaded_photo_count: area.uploaded_photo_count,
+    latest_photo_batch_id: area.latest_photo_batch_id,
+    photo_analysis_status: area.photo_analysis_status,
+    photo_analysis_summary: area.photo_analysis_summary,
+    missing_visual_information: area.missing_visual_information,
     quick_tags: area.quick_tags,
     visible_findings: area.visible_findings,
     likely_scope_items: area.likely_scope_items,
@@ -141,6 +150,10 @@ export const createDefaultArea = (estimateDbId: string, areaType: AreaType, sequ
   voice_analysis_status: 'Not Run',
   latest_voice_batch_id: '',
   uploaded_photo_count: 0,
+  latest_photo_batch_id: '',
+  photo_analysis_status: 'Not Run',
+  photo_analysis_summary: '',
+  missing_visual_information: '',
   quick_tags: '',
   visible_findings: '',
   likely_scope_items: '',
@@ -232,6 +245,10 @@ function rowToArea(r: any): EstimateArea {
     voice_analysis_status: (r.voice_analysis_status || 'Not Run') as VoiceAnalysisStatus,
     latest_voice_batch_id: r.latest_voice_batch_id || '',
     uploaded_photo_count: Number(r.uploaded_photo_count || 0),
+    latest_photo_batch_id: r.latest_photo_batch_id || '',
+    photo_analysis_status: (r.photo_analysis_status || 'Not Run') as any,
+    photo_analysis_summary: r.photo_analysis_summary || '',
+    missing_visual_information: r.missing_visual_information || '',
     quick_tags: r.quick_tags || '',
     visible_findings: r.visible_findings || '',
     likely_scope_items: r.likely_scope_items || '',

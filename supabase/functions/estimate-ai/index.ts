@@ -426,6 +426,130 @@ Call the extract_initial_intake function with the structured output.`;
 
       return new Response(JSON.stringify({ structured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    } else if (action === "area_photo_analysis") {
+      // Patch 5: Structured photo analysis block — extraction only, no pricing
+      const areaPhotoSystemPrompt = `You are TVIK LLC Photo Analysis AI — a structured construction photo extraction tool.
+
+CRITICAL RULES:
+- You are a STRUCTURED EXTRACTOR, not a chatbot.
+- Only describe what is VISIBLY present in the images.
+- Separate visible facts from probable inferences.
+- Never invent measurements, dimensions, or exact quantities unless clearly countable.
+- Never confirm hidden damage as fact — use "probable" or "possible" language.
+- Never finalize pricing or quantities.
+- Confidence must be conservative.
+- If visibility is poor, set confidence to Low and recommend site visit.
+
+CONFIDENCE RULES:
+- High = clear images, simple scope, little hidden uncertainty
+- Medium = good visual clues but important questions remain
+- Low = limited visibility, conflicting evidence, major hidden-condition risk
+
+Call the extract_photo_analysis function with the structured output.`;
+
+      const imageContents: any[] = [];
+      const imageUrls = data.image_urls || [];
+      for (const url of imageUrls) {
+        imageContents.push({ type: "image_url", image_url: { url } });
+      }
+      imageContents.push({
+        type: "text",
+        text: `Analyze these ${imageUrls.length} construction photo(s).
+Area: ${data.area_name || 'Unknown'} (${data.area_type || 'Unknown'})
+Project type: ${data.project_type || 'Unknown'}
+Quick tags: ${data.quick_tags || 'None'}
+Existing notes: ${data.notes || 'None'}
+Photo captions: ${data.captions || 'None'}`
+      });
+
+      const photoToolBody = {
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: areaPhotoSystemPrompt },
+          { role: "user", content: imageContents },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_photo_analysis",
+              description: "Extract structured photo analysis findings from construction photos.",
+              parameters: {
+                type: "object",
+                properties: {
+                  visible_facts: { type: "string", description: "Bullet list of only what can actually be seen in the photos" },
+                  probable_scope_items: { type: "string", description: "Bullet list of probable work items based on visual evidence" },
+                  probable_hidden_risks: { type: "string", description: "Bullet list of risks with visible basis (staining, damage, etc.)" },
+                  trade_detection: { type: "string", description: "Comma-separated list of trades likely involved based on what is visible" },
+                  missing_visual_information: { type: "string", description: "Bullet list of what cannot be determined from these photos" },
+                  image_confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                  site_visit_recommended: { type: "boolean" },
+                  site_visit_reason: { type: "string", description: "Why site visit is recommended, if applicable" },
+                  photo_summary: { type: "string", description: "2-3 sentence summary of what the photos show" },
+                  review_queue_items: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        suggestion_type: { type: "string", enum: ["risk_note", "trade_detection", "site_visit", "allowance", "missing_info", "internal_note"] },
+                        suggested_value: { type: "string" },
+                        apply_target: { type: "string" },
+                        confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                        evidence_summary: { type: "string" },
+                        reason_for_suggestion: { type: "string" }
+                      },
+                      required: ["suggestion_type", "suggested_value", "confidence", "evidence_summary", "reason_for_suggestion"],
+                      additionalProperties: false
+                    },
+                    description: "Optional queue items only when visual evidence supports them"
+                  }
+                },
+                required: ["visible_facts", "probable_scope_items", "probable_hidden_risks", "trade_detection", "missing_visual_information", "image_confidence", "site_visit_recommended", "photo_summary", "review_queue_items"],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "extract_photo_analysis" } },
+      };
+
+      const photoResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(photoToolBody),
+      });
+
+      if (!photoResp.ok) {
+        const status = photoResp.status;
+        if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("AI gateway error:", status, await photoResp.text());
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const photoResult = await photoResp.json();
+      const photoToolCall = photoResult.choices?.[0]?.message?.tool_calls?.[0];
+      let photoStructured: any = {};
+      if (photoToolCall?.function?.arguments) {
+        try {
+          photoStructured = typeof photoToolCall.function.arguments === 'string'
+            ? JSON.parse(photoToolCall.function.arguments)
+            : photoToolCall.function.arguments;
+        } catch {
+          photoStructured = { visible_facts: "", probable_scope_items: "", probable_hidden_risks: "", trade_detection: "", missing_visual_information: "", image_confidence: "Low", site_visit_recommended: true, site_visit_reason: "Failed to parse", photo_summary: "Analysis parsing failed", review_queue_items: [] };
+        }
+      } else {
+        const content = photoResult.choices?.[0]?.message?.content || "";
+        try { photoStructured = JSON.parse(content); } catch {
+          photoStructured = { visible_facts: "", probable_scope_items: "", probable_hidden_risks: "", trade_detection: "", missing_visual_information: "", image_confidence: "Low", site_visit_recommended: true, site_visit_reason: "No structured output", photo_summary: content || "No analysis", review_queue_items: [] };
+        }
+      }
+
+      return new Response(JSON.stringify({ structured: photoStructured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else if (action === "intake") {
       // AI Intake Assistant - structured analysis
       const workflow = data.workflow || "intake_fresh";

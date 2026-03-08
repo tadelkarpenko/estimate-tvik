@@ -734,11 +734,15 @@ export type Database = {
           estimate_id: string
           id: string
           latest_ai_summary: string
+          latest_photo_batch_id: string
           latest_voice_batch_id: string
           likely_scope_items: string
           low_confidence_warning: boolean
           missing_info_questions: string
+          missing_visual_information: string
           notes_text: string
+          photo_analysis_status: string
+          photo_analysis_summary: string
           possible_hidden_risks: string
           quick_tags: string
           revision_status: string
@@ -769,11 +773,15 @@ export type Database = {
           estimate_id: string
           id?: string
           latest_ai_summary?: string
+          latest_photo_batch_id?: string
           latest_voice_batch_id?: string
           likely_scope_items?: string
           low_confidence_warning?: boolean
           missing_info_questions?: string
+          missing_visual_information?: string
           notes_text?: string
+          photo_analysis_status?: string
+          photo_analysis_summary?: string
           possible_hidden_risks?: string
           quick_tags?: string
           revision_status?: string
@@ -804,11 +812,15 @@ export type Database = {
           estimate_id?: string
           id?: string
           latest_ai_summary?: string
+          latest_photo_batch_id?: string
           latest_voice_batch_id?: string
           likely_scope_items?: string
           low_confidence_warning?: boolean
           missing_info_questions?: string
+          missing_visual_information?: string
           notes_text?: string
+          photo_analysis_status?: string
+          photo_analysis_summary?: string
           possible_hidden_risks?: string
           quick_tags?: string
           revision_status?: string
