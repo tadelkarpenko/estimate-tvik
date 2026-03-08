@@ -280,6 +280,152 @@ RULES:
       const content = result.choices?.[0]?.message?.content || "";
       return new Response(JSON.stringify({ content }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    } else if (action === "initial_intake") {
+      // Patch 3: Estimate-level Initial Intake — structured extraction via tool calling
+      const userPrompt = `Project type: ${data.project_type || 'Unknown'}
+Description: ${data.typed_description || data.description || 'None provided'}
+Customer goal: ${data.customer_goal || 'Not specified'}
+Urgency: ${data.urgency || 'Not specified'}
+Existing status: ${data.existing_status || 'Draft'}
+Square footage: ${data.sqft || 'Unknown'}
+Finish level: ${data.finish_level || 'Unknown'}
+Address: ${data.project_address || 'Not provided'}
+Additional notes: ${data.notes || 'None'}`;
+
+      const initialIntakeSystemPrompt = `You are TVIK LLC AI Intake Assistant — a structured construction estimator copilot for initial project intake.
+
+Your job is to take a rough typed project description and convert it into a structured first-pass estimating support report.
+
+CRITICAL RULES:
+- You are a STRUCTURED EXTRACTOR, not a chatbot.
+- Distinguish visible facts from assumptions. Label assumptions as "Needs Verification".
+- Never invent measurements. Use "TBD", "Allowance", or "Needs Verification" when uncertain.
+- Never finalize prices or quantities.
+- Generate only 3-5 high-value follow-up questions that materially affect scope.
+- Keep confidence conservative.
+- Only suggest queue items when there is enough evidence from the typed description.
+
+CONFIDENCE RULES:
+- High = clear description, simple project, sufficient detail
+- Medium = useful clues but clarification needed on key items
+- Low = insufficient detail, vague description, likely hidden conditions
+
+Call the extract_initial_intake function with the structured output.`;
+
+      const toolCallBody = {
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: initialIntakeSystemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_initial_intake",
+              description: "Extract structured initial intake from a rough project description.",
+              parameters: {
+                type: "object",
+                properties: {
+                  summary_of_request: { type: "string", description: "2-3 sentence executive summary of what the client needs" },
+                  probable_work_categories: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "List of probable work categories (e.g. Demo, Framing, Plumbing)"
+                  },
+                  likely_trades: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "List of trades likely needed (e.g. Electrician, Plumber, GC)"
+                  },
+                  obvious_unknowns: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Things clearly missing or unknown from the description"
+                  },
+                  next_questions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        question: { type: "string" },
+                        why_it_matters: { type: "string" }
+                      },
+                      required: ["question", "why_it_matters"],
+                      additionalProperties: false
+                    },
+                    description: "3-5 high-value follow-up questions"
+                  },
+                  review_queue_items: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        suggestion_type: { type: "string", enum: ["allowance", "missing_info", "internal_note", "risk_note", "trade_detection"] },
+                        suggested_value: { type: "string" },
+                        apply_target: { type: "string" },
+                        confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                        evidence_summary: { type: "string" },
+                        reason_for_suggestion: { type: "string" }
+                      },
+                      required: ["suggestion_type", "suggested_value", "confidence", "evidence_summary", "reason_for_suggestion"],
+                      additionalProperties: false
+                    },
+                    description: "Optional queue items only when evidence supports them"
+                  },
+                  confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                  site_visit_recommended: { type: "boolean" }
+                },
+                required: ["summary_of_request", "probable_work_categories", "likely_trades", "obvious_unknowns", "next_questions", "review_queue_items", "confidence", "site_visit_recommended"],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "extract_initial_intake" } },
+      };
+
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(toolCallBody),
+      });
+
+      if (!response.ok) {
+        const status = response.status;
+        if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("AI gateway error:", status, await response.text());
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const result = await response.json();
+      // Extract tool call arguments
+      const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+      let structured: any = {};
+      if (toolCall?.function?.arguments) {
+        try {
+          structured = typeof toolCall.function.arguments === 'string'
+            ? JSON.parse(toolCall.function.arguments)
+            : toolCall.function.arguments;
+        } catch {
+          structured = { summary_of_request: "Failed to parse AI response", probable_work_categories: [], likely_trades: [], obvious_unknowns: [], next_questions: [], review_queue_items: [], confidence: "Low", site_visit_recommended: true };
+        }
+      } else {
+        // Fallback: try parsing content directly
+        const content = result.choices?.[0]?.message?.content || "";
+        try {
+          structured = JSON.parse(content);
+        } catch {
+          structured = { summary_of_request: content || "No structured output", probable_work_categories: [], likely_trades: [], obvious_unknowns: [], next_questions: [], review_queue_items: [], confidence: "Low", site_visit_recommended: true };
+        }
+      }
+
+      return new Response(JSON.stringify({ structured }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else if (action === "intake") {
       // AI Intake Assistant - structured analysis
       const workflow = data.workflow || "intake_fresh";

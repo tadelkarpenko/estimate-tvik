@@ -68,10 +68,29 @@ const FINDINGS_TO_SUGGESTIONS: Array<{
   { findingsKey: 'suggested_trades', type: 'trade_detection', target: 'ai_detected_trades' },
 ];
 
+// ─── Initial Intake Result Type ───
+interface InitialIntakeResult {
+  summary_of_request: string;
+  probable_work_categories: string[];
+  likely_trades: string[];
+  obvious_unknowns: string[];
+  next_questions: Array<{ question: string; why_it_matters: string }>;
+  review_queue_items: Array<{
+    suggestion_type: string;
+    suggested_value: string;
+    apply_target?: string;
+    confidence: string;
+    evidence_summary: string;
+    reason_for_suggestion: string;
+  }>;
+  confidence: 'High' | 'Medium' | 'Low';
+  site_visit_recommended: boolean;
+}
+
 export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave, onMediaChange }: AIIntakePanelProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('areas');
+  const [activeTab, setActiveTab] = useState('initial');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['summary', 'findings', 'questions']));
 
   // Area state
@@ -85,6 +104,13 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [editValue, setEditValue] = useState('');
   const [queueFilter, setQueueFilter] = useState<string>('all');
   const [queueAreaFilter, setQueueAreaFilter] = useState<string>('all');
+
+  // Initial Intake state (Patch 3)
+  const [initialIntakeDesc, setInitialIntakeDesc] = useState('');
+  const [initialIntakeGoal, setInitialIntakeGoal] = useState('');
+  const [initialIntakeUrgency, setInitialIntakeUrgency] = useState('');
+  const [initialIntakeResult, setInitialIntakeResult] = useState<InitialIntakeResult | null>(null);
+  const [initialIntakeLoading, setInitialIntakeLoading] = useState(false);
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
@@ -231,6 +257,104 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     const newTags = currentTags.includes(tag) ? currentTags.filter(t => t !== tag) : [...currentTags, tag];
     updateArea('quick_tags', newTags.join(', '));
   };
+
+  // ─── Initial Intake Analysis (Patch 3) ───
+  const analyzeInitialIntake = useCallback(async () => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+    if (isApproved) {
+      toast({ title: 'Estimate is approved', description: 'Initial intake is advisory only on approved estimates.', variant: 'destructive' });
+    }
+    const description = initialIntakeDesc.trim() || estimate.internal_notes || '';
+    if (!description) {
+      toast({ title: 'Enter a project description', variant: 'destructive' });
+      return;
+    }
+    setInitialIntakeLoading(true);
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'initial_intake',
+          data: {
+            project_type: estimate.project_type || '',
+            typed_description: description,
+            customer_goal: initialIntakeGoal.trim() || '',
+            urgency: initialIntakeUrgency.trim() || '',
+            existing_status: estimate.status || 'Draft',
+            sqft: estimate.sqft || 0,
+            finish_level: estimate.finish_level || 'Basic',
+            project_address: estimate.project_address || '',
+            notes: estimate.internal_notes || '',
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setInitialIntakeResult(structured);
+
+      // Safe support field updates (not protected content)
+      if (!isApproved) {
+        const supportUpdates: Partial<Estimate> = {
+          ai_intake_summary: structured.summary_of_request || '',
+          likely_scope_items: structured.probable_work_categories?.join(', ') || '',
+          missing_info_questions: structured.next_questions?.map((q: any) => `- ${q.question}`).join('\n') || '',
+          ai_detected_trades: structured.likely_trades?.join(', ') || '',
+          ai_scope_confidence: structured.confidence || 'Medium',
+          intake_last_updated_at: new Date().toISOString(),
+          estimate_site_visit_recommended: structured.site_visit_recommended ?? false,
+        } as any;
+        onUpdate(supportUpdates);
+      }
+
+      // Create queue items if any
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const batchId = crypto.randomUUID();
+        const queueItems = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          source_type: 'text' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'internal_note',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Initial Intake AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || '',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'initial_intake',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: 'Initial Intake',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `initial-${estimateDbId}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(queueItems);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Initial Intake complete', description: `${structured.confidence} confidence` });
+    } catch (e: any) {
+      toast({ title: 'Initial Intake failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setInitialIntakeLoading(false);
+    }
+  }, [estimateDbId, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
 
   // ─── Area-Level AI Analysis ───
   const analyzeArea = useCallback(async () => {
@@ -572,17 +696,222 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
             {pendingCount > 0 && <Badge variant="secondary" className="text-xs">{pendingCount} pending</Badge>}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Room-by-room intake. All changes go through review queue.</p>
+        <p className="text-xs text-muted-foreground mt-1">Initial intake → room-by-room → review queue. All changes require approval.</p>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-4 mt-2 grid grid-cols-4 h-8">
+        <TabsList className="mx-4 mt-2 grid grid-cols-5 h-8">
+          <TabsTrigger value="initial" className="text-xs">Intake</TabsTrigger>
           <TabsTrigger value="areas" className="text-xs">Areas</TabsTrigger>
           <TabsTrigger value="capture" className="text-xs">Capture</TabsTrigger>
           <TabsTrigger value="queue" className="text-xs">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
           <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
         </TabsList>
+
+        {/* ═══ INITIAL INTAKE TAB (Patch 3) ═══ */}
+        <TabsContent value="initial" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {isApproved && (
+                <Card className="border-amber-300 bg-amber-50">
+                  <CardContent className="py-2 px-3 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                    <p className="text-xs text-amber-800">Approved estimate — intake results are advisory only. No fields will be updated.</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Typed Description Input */}
+              <Card>
+                <CardHeader className="py-2 px-3">
+                  <CardTitle className="text-xs flex items-center gap-1.5">
+                    <ClipboardList className="h-3.5 w-3.5" /> Project Description
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 space-y-2">
+                  <Textarea
+                    value={initialIntakeDesc}
+                    onChange={e => setInitialIntakeDesc(e.target.value)}
+                    placeholder="Describe the project scope, conditions, customer requests... e.g. 'Full gut rehab of 2BR/1BA unit. Needs new kitchen, bathroom tile, all electrical updated. Tenant moved out, unit is empty. Water damage visible near tub.'"
+                    className="text-xs min-h-[100px]"
+                    disabled={initialIntakeLoading}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Customer Goal</Label>
+                      <Input
+                        value={initialIntakeGoal}
+                        onChange={e => setInitialIntakeGoal(e.target.value)}
+                        placeholder="e.g. Rent-ready, flip for sale"
+                        className="text-xs h-8 mt-1"
+                        disabled={initialIntakeLoading}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Urgency</Label>
+                      <Input
+                        value={initialIntakeUrgency}
+                        onChange={e => setInitialIntakeUrgency(e.target.value)}
+                        placeholder="e.g. ASAP, 30 days, flexible"
+                        className="text-xs h-8 mt-1"
+                        disabled={initialIntakeLoading}
+                      />
+                    </div>
+                  </div>
+                  {/* Context from estimate */}
+                  {(estimate.project_type || estimate.sqft) && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {estimate.project_type && <Badge variant="outline" className="text-xs">{estimate.project_type}</Badge>}
+                      {estimate.sqft ? <Badge variant="outline" className="text-xs">{estimate.sqft} sqft</Badge> : null}
+                      {estimate.finish_level && <Badge variant="outline" className="text-xs">{estimate.finish_level}</Badge>}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Action Button */}
+              <Button
+                onClick={analyzeInitialIntake}
+                disabled={initialIntakeLoading || (!initialIntakeDesc.trim() && !estimate.internal_notes)}
+                className="w-full text-xs h-9"
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                {initialIntakeLoading ? 'Analyzing Initial Intake…' : 'Analyze Initial Intake'}
+              </Button>
+
+              {/* ─── Structured Results ─── */}
+              {initialIntakeResult && (
+                <div className="space-y-3">
+                  {/* Confidence Badge */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">Confidence:</span>
+                    {confidenceBadge(initialIntakeResult.confidence)}
+                    {initialIntakeResult.site_visit_recommended && (
+                      <Badge className="bg-red-100 text-red-800 border-red-300 text-xs">
+                        <MapPin className="h-3 w-3 mr-1" />Site Visit Recommended
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Summary of Request */}
+                  <Card>
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> Summary of Request</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-3">
+                      <p className="text-xs text-foreground">{initialIntakeResult.summary_of_request}</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Probable Work Categories */}
+                  {initialIntakeResult.probable_work_categories?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Probable Work Categories</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {initialIntakeResult.probable_work_categories.map((cat, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{cat}</Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Likely Trades */}
+                  {initialIntakeResult.likely_trades?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5" /> Likely Trades</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {initialIntakeResult.likely_trades.map((trade, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">{trade}</Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Obvious Unknowns */}
+                  {initialIntakeResult.obvious_unknowns?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> Obvious Unknowns</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ul className="space-y-1">
+                          {initialIntakeResult.obvious_unknowns.map((u, i) => (
+                            <li key={i} className="text-xs text-foreground flex items-start gap-1.5">
+                              <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                              {u}
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Next Questions */}
+                  {initialIntakeResult.next_questions?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><FileQuestion className="h-3.5 w-3.5" /> Follow-Up Questions ({initialIntakeResult.next_questions.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ol className="space-y-2">
+                          {initialIntakeResult.next_questions.map((q, i) => (
+                            <li key={i} className="text-xs border rounded p-2">
+                              <p className="font-medium text-foreground">{i + 1}. {q.question}</p>
+                              <p className="text-muted-foreground mt-0.5">Why: {q.why_it_matters}</p>
+                            </li>
+                          ))}
+                        </ol>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Queue Suggestions Preview */}
+                  {initialIntakeResult.review_queue_items?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5">
+                          <Send className="h-3.5 w-3.5" /> Queue Suggestions
+                          <Badge variant="secondary" className="text-xs">{initialIntakeResult.review_queue_items.length} created</Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ul className="space-y-1.5">
+                          {initialIntakeResult.review_queue_items.map((item, i) => (
+                            <li key={i} className="text-xs border rounded p-2 flex items-start gap-2">
+                              <Badge variant="outline" className="text-xs shrink-0">{SUGGESTION_TYPE_LABELS[item.suggestion_type as SuggestionType] || item.suggestion_type}</Badge>
+                              <span className="text-foreground">{item.suggested_value}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <Button size="sm" variant="outline" className="text-xs h-7 mt-2 w-full" onClick={() => setActiveTab('queue')}>
+                          View in Review Queue →
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!initialIntakeResult && !initialIntakeLoading && (
+                <div className="text-center py-6">
+                  <Sparkles className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-xs text-muted-foreground">Enter a rough project description above and click "Analyze Initial Intake" to get structured first-pass estimating support.</p>
+                  <p className="text-xs text-muted-foreground mt-1">The AI will identify trades, unknowns, and follow-up questions — no pricing or quantities.</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
 
         {/* ═══ AREAS TAB ═══ */}
         <TabsContent value="areas" className="flex-1 overflow-hidden">
