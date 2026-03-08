@@ -1150,84 +1150,49 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [estimateDbId, suggestions, estimate, toast]);
 
-  // ─── Execute Write Plan (Patch 9) ───
-  const executeWritePlan = useCallback(async () => {
+  // ─── Execute Write Plan (Patch 10: Controlled Writeback) ───
+  const executeWritePlanControlled = useCallback(async () => {
     if (!writePlan || !estimateDbId) return;
     setWritePlanLoading(true);
+    setExecutionResult(null);
     try {
-      const fieldsToUpdate: WritePlanFieldUpdate[] = JSON.parse(writePlan.fields_to_update || '[]');
-      const auditEntries: WritePlanAuditEntry[] = JSON.parse(writePlan.audit_entries_to_create || '[]');
+      const result = await executeWriteback(writePlan, estimate, estimateDbId);
+      setExecutionResult(result);
 
-      // Build estimate updates from field plan
-      const updates: Partial<Estimate> = {};
-      for (const f of fieldsToUpdate) {
-        if (f.action === 'append') {
-          const existing = (estimate as any)[f.field] || '';
-          (updates as any)[f.field] = existing ? `${existing}\n• ${f.value}` : `• ${f.value}`;
-        } else if (f.action === 'set') {
-          if (f.field === 'site_visit_required') {
-            updates.site_visit_required = f.value === 'true';
-          } else {
-            (updates as any)[f.field] = f.value;
+      if (result.execution_status === 'success' || result.execution_status === 'partial_success') {
+        // Refresh local state
+        const updatedSuggestions = await getSuggestions(estimateDbId);
+        setSuggestions(updatedSuggestions);
+        setWritePlan({ ...writePlan, apply_status: 'applied' as any });
+
+        // Apply local estimate updates for UI sync
+        const fieldUpdates: Partial<Estimate> = {};
+        for (const af of result.applied_fields) {
+          if (af.result === 'applied') {
+            (fieldUpdates as any)[af.field] = af.action === 'set'
+              ? (af.field === 'site_visit_required' ? af.value === 'true' : af.value)
+              : ((estimate as any)[af.field] || '') + (((estimate as any)[af.field] || '') ? `\n• ${af.value}` : `• ${af.value}`);
           }
         }
+        if (result.requires_reapproval_applied && ['Approved', 'Sent'].includes(estimate.status || '')) {
+          fieldUpdates.status = 'Ready for Review' as any;
+        }
+        fieldUpdates.ai_apply_status = 'Applied' as any;
+        onUpdate(fieldUpdates);
+
+        toast({
+          title: result.execution_status === 'success' ? 'Writeback complete' : 'Partial writeback',
+          description: result.summary,
+        });
+      } else {
+        toast({ title: 'Writeback blocked', description: result.summary, variant: 'destructive' });
       }
-
-      // Reapproval: downgrade status if needed
-      if (writePlan.requires_reapproval && (['Approved', 'Sent'] as string[]).includes(estimate.status || '')) {
-        updates.status = 'Ready for Review' as any;
-      }
-
-      updates.ai_apply_status = 'Applied' as any;
-      onUpdate(updates);
-
-      // Mark all approved suggestions as applied
-      const approvable = suggestions.filter(s => s.status === 'approved' || s.status === 'edited');
-      for (const s of approvable) {
-        await updateSuggestionStatus(s.id, 'applied', { approved_by: 'TVIK' });
-      }
-
-      // Create audit records
-      if (auditEntries.length > 0) {
-        const auditRows = auditEntries.map(a => ({
-          audit_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
-          suggestion_id: a.suggestion_id,
-          original_suggestion: a.original_suggestion,
-          final_applied_value: a.final_applied_value,
-          applied_field: a.applied_field,
-          confidence: a.confidence,
-          approved_by: a.approved_by,
-          approved_at: new Date().toISOString(),
-          source_type: a.source_type,
-          area_id: a.area_id || null,
-          suggestion_batch_id: a.suggestion_batch_id || '',
-          apply_run_id: writePlan.apply_run_id,
-          estimate_version: writePlan.estimate_version,
-        }));
-        await insertAppliedAudit(auditRows);
-      }
-
-      // Update write plan status
-      if (writePlan.id) {
-        await updateWritePlanStatus(writePlan.id, 'applied');
-      }
-
-      await onSave();
-      const updatedSuggestions = await getSuggestions(estimateDbId);
-      setSuggestions(updatedSuggestions);
-      setWritePlan({ ...writePlan, apply_status: 'applied' as any });
-
-      toast({ title: 'Write plan applied', description: `${auditEntries.length} changes applied. ${writePlan.requires_reapproval ? 'Estimate moved to Ready for Review.' : ''}` });
     } catch (e: any) {
-      if (writePlan.id) {
-        await updateWritePlanStatus(writePlan.id, 'failed').catch(() => {});
-      }
-      toast({ title: 'Apply failed', description: e.message, variant: 'destructive' });
+      toast({ title: 'Execution failed', description: e.message, variant: 'destructive' });
     } finally {
       setWritePlanLoading(false);
     }
-  }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, onSave, toast]);
+  }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, toast]);
 
   // ─── Apply Approved Suggestions (legacy) ───
   const applyApprovedSuggestions = async () => {
