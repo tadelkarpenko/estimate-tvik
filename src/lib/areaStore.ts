@@ -36,6 +36,10 @@ export interface EstimateArea {
   voice_analysis_status: VoiceAnalysisStatus;
   latest_voice_batch_id: string;
   uploaded_photo_count: number;
+  latest_photo_batch_id: string;
+  photo_analysis_status: 'Not Run' | 'Ready' | 'Complete' | 'Failed';
+  photo_analysis_summary: string;
+  missing_visual_information: string;
   quick_tags: string;
   visible_findings: string;
   likely_scope_items: string;
