@@ -99,6 +99,14 @@ export interface Estimate {
   intake_last_updated_at: string | null;
   revision_needed_warning: boolean;
   ai_apply_status: 'Not Applied' | 'Draft Applied' | 'Reviewed';
+  // Voice intake fields
+  voice_transcript_raw: string;
+  voice_transcript_cleaned: string;
+  voice_detected_scope: string;
+  voice_detected_risks: string;
+  voice_detected_rooms: string;
+  voice_detected_material_preferences: string;
+  voice_last_updated_at: string | null;
 }
 
 export interface CostLibraryItem {

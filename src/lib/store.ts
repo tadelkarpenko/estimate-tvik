@@ -458,6 +458,14 @@ function estimateToRow(est: Estimate, userId: string) {
     intake_last_updated_at: est.intake_last_updated_at || null,
     revision_needed_warning: est.revision_needed_warning ?? false,
     ai_apply_status: est.ai_apply_status || 'Not Applied',
+    // Voice intake fields
+    voice_transcript_raw: est.voice_transcript_raw || '',
+    voice_transcript_cleaned: est.voice_transcript_cleaned || '',
+    voice_detected_scope: est.voice_detected_scope || '',
+    voice_detected_risks: est.voice_detected_risks || '',
+    voice_detected_rooms: est.voice_detected_rooms || '',
+    voice_detected_material_preferences: est.voice_detected_material_preferences || '',
+    voice_last_updated_at: est.voice_last_updated_at || null,
   };
 }
 
