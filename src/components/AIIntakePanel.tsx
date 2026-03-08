@@ -245,7 +245,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     const newArea = createDefaultArea(dbId, areaType, areas.length);
     try {
       const id = await saveEstimateArea(newArea);
-      const updated = await getEstimateAreas(estimateDbId);
+      const updated = await getEstimateAreas(dbId);
       setAreas(updated);
       setSelectedAreaId(id);
       onUpdate({ area_count: updated.length } as any);
