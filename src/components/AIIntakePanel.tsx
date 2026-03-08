@@ -68,10 +68,29 @@ const FINDINGS_TO_SUGGESTIONS: Array<{
   { findingsKey: 'suggested_trades', type: 'trade_detection', target: 'ai_detected_trades' },
 ];
 
+// ─── Initial Intake Result Type ───
+interface InitialIntakeResult {
+  summary_of_request: string;
+  probable_work_categories: string[];
+  likely_trades: string[];
+  obvious_unknowns: string[];
+  next_questions: Array<{ question: string; why_it_matters: string }>;
+  review_queue_items: Array<{
+    suggestion_type: string;
+    suggested_value: string;
+    apply_target?: string;
+    confidence: string;
+    evidence_summary: string;
+    reason_for_suggestion: string;
+  }>;
+  confidence: 'High' | 'Medium' | 'Low';
+  site_visit_recommended: boolean;
+}
+
 export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave, onMediaChange }: AIIntakePanelProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('areas');
+  const [activeTab, setActiveTab] = useState('initial');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['summary', 'findings', 'questions']));
 
   // Area state
