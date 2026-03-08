@@ -1288,13 +1288,14 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-4 mt-2 grid grid-cols-8 h-8">
+        <TabsList className="mx-4 mt-2 grid grid-cols-9 h-8">
           <TabsTrigger value="initial" className="text-[10px] px-1">Intake</TabsTrigger>
           <TabsTrigger value="areas" className="text-[10px] px-1">Areas</TabsTrigger>
           <TabsTrigger value="capture" className="text-[10px] px-1">Capture</TabsTrigger>
           <TabsTrigger value="photos" className="text-[10px] px-1">Photos</TabsTrigger>
           <TabsTrigger value="merge" className="text-[10px] px-1">Merge</TabsTrigger>
           <TabsTrigger value="questions" className="text-[10px] px-1">Questions</TabsTrigger>
+          <TabsTrigger value="check" className="text-[10px] px-1">Check</TabsTrigger>
           <TabsTrigger value="queue" className="text-[10px] px-1">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
           <TabsTrigger value="summary" className="text-[10px] px-1">Summary</TabsTrigger>
         </TabsList>
