@@ -1054,7 +1054,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setCompletenessLoading(false);
     }
-  }, [estimateDbId, areas, estimate, isApproved, toast, onUpdate]);
+  }, [estimateDbId, ensureSaved, areas, estimate, isApproved, toast, onUpdate]);
 
 
   const sendSuggestionsToQueue = async () => {
