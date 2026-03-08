@@ -14,6 +14,143 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_applied_suggestions_audit: {
+        Row: {
+          applied_field: string
+          approved_at: string | null
+          approved_by: string
+          audit_id: string
+          confidence: string
+          created_at: string
+          estimate_id: string
+          final_applied_value: string
+          id: string
+          original_suggestion: string
+          source_type: string
+          suggestion_id: string
+          user_id: string
+        }
+        Insert: {
+          applied_field?: string
+          approved_at?: string | null
+          approved_by?: string
+          audit_id?: string
+          confidence?: string
+          created_at?: string
+          estimate_id: string
+          final_applied_value?: string
+          id?: string
+          original_suggestion?: string
+          source_type?: string
+          suggestion_id: string
+          user_id: string
+        }
+        Update: {
+          applied_field?: string
+          approved_at?: string | null
+          approved_by?: string
+          audit_id?: string
+          confidence?: string
+          created_at?: string
+          estimate_id?: string
+          final_applied_value?: string
+          id?: string
+          original_suggestion?: string
+          source_type?: string
+          suggestion_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_applied_suggestions_audit_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_applied_suggestions_audit_suggestion_id_fkey"
+            columns: ["suggestion_id"]
+            isOneToOne: false
+            referencedRelation: "ai_suggestions_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_suggestions_queue: {
+        Row: {
+          apply_target: string
+          approved_at: string | null
+          approved_by: string
+          confidence: string
+          created_at: string
+          edited_value: string
+          estimate_id: string
+          evidence_summary: string
+          id: string
+          reason_for_suggestion: string
+          rejected_at: string | null
+          reviewer_notes: string
+          source_type: string
+          status: string
+          suggested_value: string
+          suggestion_id: string
+          suggestion_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          apply_target?: string
+          approved_at?: string | null
+          approved_by?: string
+          confidence?: string
+          created_at?: string
+          edited_value?: string
+          estimate_id: string
+          evidence_summary?: string
+          id?: string
+          reason_for_suggestion?: string
+          rejected_at?: string | null
+          reviewer_notes?: string
+          source_type?: string
+          status?: string
+          suggested_value?: string
+          suggestion_id?: string
+          suggestion_type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          apply_target?: string
+          approved_at?: string | null
+          approved_by?: string
+          confidence?: string
+          created_at?: string
+          edited_value?: string
+          estimate_id?: string
+          evidence_summary?: string
+          id?: string
+          reason_for_suggestion?: string
+          rejected_at?: string | null
+          reviewer_notes?: string
+          source_type?: string
+          status?: string
+          suggested_value?: string
+          suggestion_id?: string
+          suggestion_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_suggestions_queue_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       change_orders: {
         Row: {
           approved: boolean
@@ -904,6 +1041,13 @@ export type Database = {
           validity_days: number
           version: string
           visible_findings: string
+          voice_detected_material_preferences: string
+          voice_detected_risks: string
+          voice_detected_rooms: string
+          voice_detected_scope: string
+          voice_last_updated_at: string | null
+          voice_transcript_cleaned: string
+          voice_transcript_raw: string
           volatility_reviewed: boolean
           zip: string
         }
@@ -979,6 +1123,13 @@ export type Database = {
           validity_days?: number
           version?: string
           visible_findings?: string
+          voice_detected_material_preferences?: string
+          voice_detected_risks?: string
+          voice_detected_rooms?: string
+          voice_detected_scope?: string
+          voice_last_updated_at?: string | null
+          voice_transcript_cleaned?: string
+          voice_transcript_raw?: string
           volatility_reviewed?: boolean
           zip?: string
         }
@@ -1054,6 +1205,13 @@ export type Database = {
           validity_days?: number
           version?: string
           visible_findings?: string
+          voice_detected_material_preferences?: string
+          voice_detected_risks?: string
+          voice_detected_rooms?: string
+          voice_detected_scope?: string
+          voice_last_updated_at?: string | null
+          voice_transcript_cleaned?: string
+          voice_transcript_raw?: string
           volatility_reviewed?: boolean
           zip?: string
         }

@@ -66,6 +66,10 @@ const defaultEst: Partial<Estimate> = {
   suggested_line_items: '', ai_detected_trades: '', site_visit_required: false,
   ai_scope_confidence: 'Medium', photo_count: 0, intake_last_updated_at: null,
   revision_needed_warning: false, ai_apply_status: 'Not Applied',
+  // Voice intake defaults
+  voice_transcript_raw: '', voice_transcript_cleaned: '', voice_detected_scope: '',
+  voice_detected_risks: '', voice_detected_rooms: '', voice_detected_material_preferences: '',
+  voice_last_updated_at: null,
 } as any;
 
 const FINISH_MULTS: Record<FinishLevel, number> = { Basic: 1.00, Mid: 1.15, High: 1.30, Luxury: 1.55 };

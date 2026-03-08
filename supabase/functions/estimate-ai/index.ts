@@ -292,11 +292,15 @@ Square footage: ${data.sqft || 'Unknown'}
 Fixture count: ${data.fixture_count || 'Unknown'}
 Finish level: ${data.finish_level || 'Unknown'}
 
+Voice walkthrough transcript: ${data.voice_transcript || 'No voice transcript provided'}
+
 Photo analyses: ${data.photo_analyses ? JSON.stringify(data.photo_analyses) : 'No photos analyzed'}
 
 Existing estimate data: ${data.existing_estimate ? JSON.stringify(data.existing_estimate) : 'No existing estimate'}
 
-Additional context from user: ${data.user_input || 'None'}`;
+Additional context from user: ${data.user_input || 'None'}
+
+IMPORTANT: If both voice transcript and typed notes are provided, merge findings from all sources. Distinguish visible evidence (photos) from spoken observations (voice) and written notes (text). If sources conflict, lower confidence and note the conflict.`;
 
       messages = [
         { role: "system", content: INTAKE_SYSTEM_PROMPT },
