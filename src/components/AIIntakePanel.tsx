@@ -796,6 +796,117 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [estimateDbId, selectedArea, estimate, isApproved, toast, onUpdate]);
 
+  // ─── Missing Info Questions (Patch 7) ───
+  const generateMissingInfoQuestions = useCallback(async () => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+    if (!selectedArea) {
+      toast({ title: 'Select an area first', variant: 'destructive' });
+      return;
+    }
+    if (isApproved) {
+      toast({ title: 'Estimate is approved', description: 'Missing info is advisory only.', variant: 'destructive' });
+    }
+
+    setMissingInfoLoading(true);
+    const batchId = crypto.randomUUID();
+
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'missing_info_questions',
+          data: {
+            area_name: selectedArea.area_name || '',
+            area_type: selectedArea.area_type || '',
+            project_type: estimate.project_type || '',
+            current_status: estimate.status || 'Draft',
+            current_confidence: selectedArea.merged_confidence || selectedArea.confidence || 'Medium',
+            merged_scope_summary: selectedArea.merged_scope_summary || '',
+            merged_visible_facts: selectedArea.merged_visible_facts || '',
+            merged_inferences: selectedArea.merged_inferences || '',
+            merged_needs_verification: selectedArea.merged_needs_verification || '',
+            merged_risks: selectedArea.merged_risks || '',
+            merged_trade_detection: selectedArea.merged_trade_detection || '',
+            current_exclusions: estimate.suggested_exclusions || '',
+            current_allowances: estimate.suggested_allowances || '',
+            current_assumptions: estimate.suggested_assumptions || '',
+            current_risk_notes: estimate.possible_hidden_risks || '',
+            already_asked_questions: selectedArea.missing_info_questions || '',
+            current_site_visit_recommended: selectedArea.site_visit_flag || false,
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setMissingInfoResult(structured);
+
+      // Update area support fields if not approved
+      if (!isApproved && structured.top_priority_questions?.length > 0) {
+        const questionsText = structured.top_priority_questions
+          .map((q: any, i: number) => `${i + 1}. ${q.question}\n   Why: ${q.why_it_matters}`)
+          .join('\n\n');
+
+        const updatedArea: EstimateArea = {
+          ...selectedArea,
+          missing_info_questions: questionsText,
+          site_visit_flag: structured.site_visit_recommended || selectedArea.site_visit_flag,
+          site_visit_reason: structured.site_visit_reason || selectedArea.site_visit_reason,
+        };
+
+        await saveEstimateArea(updatedArea);
+        setAreas(prev => prev.map(a => a.id === selectedArea.id ? updatedArea : a));
+      }
+
+      // Create queue items
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const newSuggestions = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          area_id: selectedArea.id || null,
+          source_type: 'merged' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'missing_info',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Missing Info Questions AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || 'missing_info_questions',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'missing_info_questions',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: selectedArea.area_name || 'Questions',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `missinginfo-${estimateDbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(newSuggestions);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Missing info questions generated', description: `${structured.top_priority_questions?.length || 0} questions. ${structured.review_queue_items?.length || 0} queued.` });
+    } catch (e: any) {
+      toast({ title: 'Missing info generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setMissingInfoLoading(false);
+    }
+  }, [estimateDbId, selectedArea, estimate, isApproved, toast]);
+
   // ─── Send Suggestions to Queue ───
   const sendSuggestionsToQueue = async () => {
     if (!areaFindings || !estimateDbId || !selectedArea) {
