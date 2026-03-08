@@ -50,6 +50,7 @@ import { AIIntakePanel } from '@/components/AIIntakePanel';
 
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
+  project_category: 'Full Renovation', scope_class: 'Full-Scope Multi-Trade', job_complexity: 'Standard Scope',
   finish_level: 'Basic', finish_materials_included: false, overhead_pct: 0.10,
   profit_pct: 0.20, contingency_pct: 0.10, sqft: 0, fixture_count: 0, labor_hours: 0, version: 'v1.0',
   client_name: '', client_email: '', client_phone: '', project_address: '', city: '', zip: '',
