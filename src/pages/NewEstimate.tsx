@@ -130,6 +130,7 @@ export default function NewEstimate() {
     qty: 0, labor_unit_cost: 0, material_unit_cost: 0, labor_hours_per_unit: 0, notes: '',
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [intakeOpen, setIntakeOpen] = useState(false);
   const isEdit = !!id;
 
   useEffect(() => {
