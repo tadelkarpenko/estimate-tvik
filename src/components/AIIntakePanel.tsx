@@ -389,7 +389,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Area-Level AI Analysis ───
   const analyzeArea = useCallback(async () => {
-    if (!selectedArea || !estimateDbId) return;
+    if (!selectedArea) return;
+    const resolvedId = estimateDbId;
+    if (!resolvedId) return;
     setLoading(true);
 
     // Save area first
