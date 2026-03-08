@@ -794,7 +794,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [estimateDbId, selectedArea, estimate, isApproved, toast, onUpdate]);
 
-
+  // ─── Send Suggestions to Queue ───
+  const sendSuggestionsToQueue = async () => {
     if (!areaFindings || !estimateDbId || !selectedArea) {
       toast({ title: 'Run analysis first', variant: 'destructive' });
       return;
