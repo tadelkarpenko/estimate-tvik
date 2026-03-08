@@ -55,6 +55,8 @@ const App = () => (
               <Route path="/jobs/calendar" element={<JobCalendar />} />
               <Route path="/jobs/:id" element={<JobDetail />} />
               <Route path="/review-queue" element={<ReviewQueuePage />} />
+              <Route path="/field" element={<MobileFieldCapture />} />
+              <Route path="/field/:id" element={<MobileFieldCapture />} />
               <Route path="/admin" element={<AdminPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />

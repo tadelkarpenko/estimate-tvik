@@ -18,6 +18,7 @@ const navItems = [
   { title: 'Contracts', url: '/contracts', icon: Briefcase },
   { title: 'Jobs', url: '/jobs', icon: HardHat },
   { title: 'Job Calendar', url: '/jobs/calendar', icon: CalendarDays },
+  { title: 'Field Capture', url: '/field', icon: Smartphone },
   { title: 'Admin', url: '/admin', icon: Settings },
 ];
 
