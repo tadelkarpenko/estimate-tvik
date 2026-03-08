@@ -1,0 +1,1 @@
+ALTER TABLE public.estimates ADD COLUMN IF NOT EXISTS estimate_completeness_summary text NOT NULL DEFAULT '';

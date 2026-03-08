@@ -1125,6 +1125,7 @@ export type Database = {
           created_at: string
           created_by: string
           crew_size: number
+          estimate_completeness_summary: string
           estimate_confidence_rollup: string
           estimate_id: string
           estimate_site_visit_recommended: boolean
@@ -1214,6 +1215,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           crew_size?: number
+          estimate_completeness_summary?: string
           estimate_confidence_rollup?: string
           estimate_id: string
           estimate_site_visit_recommended?: boolean
@@ -1303,6 +1305,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           crew_size?: number
+          estimate_completeness_summary?: string
           estimate_confidence_rollup?: string
           estimate_id?: string
           estimate_site_visit_recommended?: boolean
