@@ -1126,7 +1126,108 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   };
 
-  // ─── Apply Approved Suggestions ───
+  // ─── Generate Write Plan (Patch 9) ───
+  const generateAndStageWritePlan = useCallback(async () => {
+    if (!estimateDbId) return;
+    const approvable = suggestions.filter(s => s.status === 'approved' || s.status === 'edited');
+    if (approvable.length === 0) {
+      setWritePlan(null);
+      toast({ title: 'No approved items', description: 'Approve suggestions in the Queue tab first.', variant: 'destructive' });
+      return;
+    }
+    setWritePlanLoading(true);
+    try {
+      const plan = generateWritePlan(approvable, estimate, estimateDbId);
+      await saveWritePlan(plan);
+      setWritePlan(plan as WritePlan);
+      toast({ title: 'Write plan staged', description: plan.summary });
+    } catch (e: any) {
+      toast({ title: 'Write plan failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setWritePlanLoading(false);
+    }
+  }, [estimateDbId, suggestions, estimate, toast]);
+
+  // ─── Execute Write Plan (Patch 9) ───
+  const executeWritePlan = useCallback(async () => {
+    if (!writePlan || !estimateDbId) return;
+    setWritePlanLoading(true);
+    try {
+      const fieldsToUpdate: WritePlanFieldUpdate[] = JSON.parse(writePlan.fields_to_update || '[]');
+      const auditEntries: WritePlanAuditEntry[] = JSON.parse(writePlan.audit_entries_to_create || '[]');
+
+      // Build estimate updates from field plan
+      const updates: Partial<Estimate> = {};
+      for (const f of fieldsToUpdate) {
+        if (f.action === 'append') {
+          const existing = (estimate as any)[f.field] || '';
+          (updates as any)[f.field] = existing ? `${existing}\n• ${f.value}` : `• ${f.value}`;
+        } else if (f.action === 'set') {
+          if (f.field === 'site_visit_required') {
+            updates.site_visit_required = f.value === 'true';
+          } else {
+            (updates as any)[f.field] = f.value;
+          }
+        }
+      }
+
+      // Reapproval: downgrade status if needed
+      if (writePlan.requires_reapproval && (estimate.status === 'Approved' || estimate.status === 'Sent')) {
+        updates.status = 'Ready for Review' as any;
+      }
+
+      updates.ai_apply_status = 'Applied' as any;
+      onUpdate(updates);
+
+      // Mark all approved suggestions as applied
+      const approvable = suggestions.filter(s => s.status === 'approved' || s.status === 'edited');
+      for (const s of approvable) {
+        await updateSuggestionStatus(s.id, 'applied', { approved_by: 'TVIK' });
+      }
+
+      // Create audit records
+      if (auditEntries.length > 0) {
+        const auditRows = auditEntries.map(a => ({
+          audit_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          suggestion_id: a.suggestion_id,
+          original_suggestion: a.original_suggestion,
+          final_applied_value: a.final_applied_value,
+          applied_field: a.applied_field,
+          confidence: a.confidence,
+          approved_by: a.approved_by,
+          approved_at: new Date().toISOString(),
+          source_type: a.source_type,
+          area_id: a.area_id || null,
+          suggestion_batch_id: a.suggestion_batch_id || '',
+          apply_run_id: writePlan.apply_run_id,
+          estimate_version: writePlan.estimate_version,
+        }));
+        await insertAppliedAudit(auditRows);
+      }
+
+      // Update write plan status
+      if (writePlan.id) {
+        await updateWritePlanStatus(writePlan.id, 'applied');
+      }
+
+      await onSave();
+      const updatedSuggestions = await getSuggestions(estimateDbId);
+      setSuggestions(updatedSuggestions);
+      setWritePlan({ ...writePlan, apply_status: 'applied' as any });
+
+      toast({ title: 'Write plan applied', description: `${auditEntries.length} changes applied. ${writePlan.requires_reapproval ? 'Estimate moved to Ready for Review.' : ''}` });
+    } catch (e: any) {
+      if (writePlan.id) {
+        await updateWritePlanStatus(writePlan.id, 'failed').catch(() => {});
+      }
+      toast({ title: 'Apply failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setWritePlanLoading(false);
+    }
+  }, [writePlan, estimateDbId, estimate, suggestions, onUpdate, onSave, toast]);
+
+  // ─── Apply Approved Suggestions (legacy) ───
   const applyApprovedSuggestions = async () => {
     if (!estimateDbId) return;
     const approvable = filteredSuggestions.filter(s => s.status === 'approved' || s.status === 'edited');
