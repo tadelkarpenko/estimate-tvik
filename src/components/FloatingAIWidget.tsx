@@ -102,6 +102,7 @@ export function FloatingAIWidget() {
   }, [input, streaming, messages, location.pathname, contextLabel]);
 
   if (!open) {
+    if (isEstimatePage) return null;
     return (
       <button
         onClick={() => setOpen(true)}
