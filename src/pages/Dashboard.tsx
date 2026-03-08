@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getEstimates, getCostAudits, getCostLibrary, initStore } from '@/lib/store';
+import { PWAInstallGuide } from '@/components/PWAInstallGuide';
 import { supabase } from '@/integrations/supabase/client';
 import type { Estimate, CostAudit, CostLibraryItem } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
