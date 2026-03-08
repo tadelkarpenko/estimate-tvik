@@ -54,7 +54,7 @@ interface AIIntakePanelProps {
   estimateDbId?: string;
   media: EstimateMedia[];
   onUpdate: (updates: Partial<Estimate>) => void;
-  onSave: () => Promise<void>;
+  onSave: () => Promise<string | undefined>;
   onMediaChange: () => void;
 }
 
@@ -94,6 +94,22 @@ interface InitialIntakeResult {
 
 export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave, onMediaChange }: AIIntakePanelProps) {
   const { toast } = useToast();
+
+  // Auto-save helper: ensures estimate is persisted before AI actions
+  const ensureSaved = useCallback(async (): Promise<string | null> => {
+    if (estimateDbId) return estimateDbId;
+    try {
+      const dbId = await onSave();
+      if (!dbId) {
+        toast({ title: 'Could not save estimate', description: 'Please try saving manually first.', variant: 'destructive' });
+        return null;
+      }
+      return dbId;
+    } catch (e: any) {
+      toast({ title: 'Auto-save failed', description: e.message, variant: 'destructive' });
+      return null;
+    }
+  }, [estimateDbId, onSave, toast]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('initial');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['summary', 'findings', 'questions']));
@@ -224,14 +240,12 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Area CRUD ───
   const addArea = async (areaType: AreaType) => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
-    const newArea = createDefaultArea(estimateDbId, areaType, areas.length);
+    const dbId = await ensureSaved();
+    if (!dbId) return;
+    const newArea = createDefaultArea(dbId, areaType, areas.length);
     try {
       const id = await saveEstimateArea(newArea);
-      const updated = await getEstimateAreas(estimateDbId);
+      const updated = await getEstimateAreas(dbId);
       setAreas(updated);
       setSelectedAreaId(id);
       onUpdate({ area_count: updated.length } as any);
@@ -279,10 +293,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Initial Intake Analysis (Patch 3) ───
   const analyzeInitialIntake = useCallback(async () => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
+    const dbId = await ensureSaved();
+    if (!dbId) return;
     if (isApproved) {
       toast({ title: 'Estimate is approved', description: 'Initial intake is advisory only on approved estimates.', variant: 'destructive' });
     }
@@ -373,7 +385,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setInitialIntakeLoading(false);
     }
-  }, [estimateDbId, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
+  }, [estimateDbId, ensureSaved, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
 
   // ─── Area-Level AI Analysis ───
   const analyzeArea = useCallback(async () => {
@@ -684,10 +696,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Merge Analysis (Patch 6) ───
   const analyzeMerge = useCallback(async () => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
+    const dbId = await ensureSaved();
+    if (!dbId) return;
     if (!selectedArea) {
       toast({ title: 'Select an area first', variant: 'destructive' });
       return;
@@ -806,14 +816,12 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMergeAnalysisLoading(false);
     }
-  }, [estimateDbId, selectedArea, estimate, isApproved, toast, onUpdate]);
+  }, [estimateDbId, ensureSaved, selectedArea, estimate, isApproved, toast, onUpdate]);
 
   // ─── Missing Info Questions (Patch 7) ───
   const generateMissingInfoQuestions = useCallback(async () => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
+    const dbId = await ensureSaved();
+    if (!dbId) return;
     if (!selectedArea) {
       toast({ title: 'Select an area first', variant: 'destructive' });
       return;
@@ -917,14 +925,12 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMissingInfoLoading(false);
     }
-  }, [estimateDbId, selectedArea, estimate, isApproved, toast]);
+  }, [estimateDbId, ensureSaved, selectedArea, estimate, isApproved, toast]);
 
   // ─── Completeness Check (Patch 8) ───
   const runCompletenessCheck = useCallback(async () => {
-    if (!estimateDbId) {
-      toast({ title: 'Save estimate first', variant: 'destructive' });
-      return;
-    }
+    const dbId = await ensureSaved();
+    if (!dbId) return;
 
     setCompletenessLoading(true);
     const batchId = crypto.randomUUID();
@@ -1048,7 +1054,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setCompletenessLoading(false);
     }
-  }, [estimateDbId, areas, estimate, isApproved, toast, onUpdate]);
+  }, [estimateDbId, ensureSaved, areas, estimate, isApproved, toast, onUpdate]);
 
 
   const sendSuggestionsToQueue = async () => {

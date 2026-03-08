@@ -196,7 +196,7 @@ export default function NewEstimate() {
     return Object.keys(errs).length === 0;
   };
 
-  const saveDraft = async () => {
+  const saveDraft = async (): Promise<string | undefined> => {
     const estId = form.estimate_id || await nextEstimateId();
     const est: Estimate = {
       ...defaultEst, ...form,
@@ -209,6 +209,7 @@ export default function NewEstimate() {
     const dbId = await getEstimateDbId(estId);
     if (dbId) setEstimateDbId(dbId);
     toast({ title: 'Draft saved', description: est.estimate_id });
+    return dbId || undefined;
   };
 
   const generate = async () => {
