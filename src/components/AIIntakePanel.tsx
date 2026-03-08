@@ -30,6 +30,7 @@ import {
 } from '@/lib/areaStore';
 import { saveHealthCheck } from '@/lib/healthCheckStore';
 import { generateWritePlan, saveWritePlan, updateWritePlanStatus, type WritePlan, type WritePlanFieldUpdate, type WritePlanLineItem, type WritePlanAuditEntry } from '@/lib/writePlanStore';
+import { executeWriteback, type ExecutionResult } from '@/lib/writebackEngine';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
