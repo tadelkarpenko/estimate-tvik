@@ -44,6 +44,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { EstimateRevisionLog } from '@/lib/types';
 import { computeCompletenessScore, evaluateApprovalGate, computeCalcStatus, type CompletenessChecklist, type ApprovalGateResult } from '@/lib/reliabilityEngine';
 import { Progress } from '@/components/ui/progress';
+import { AIIntakePanel } from '@/components/AIIntakePanel';
 
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
