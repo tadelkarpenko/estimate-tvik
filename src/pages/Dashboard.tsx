@@ -139,15 +139,16 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-2">
               {actions.slice(0, 12).map((a, i) => (
-                <div key={i} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
                   <Badge variant={severityColor(a.severity)} className="text-xs w-16 justify-center shrink-0">{a.severity}</Badge>
                   <Badge variant="outline" className="text-xs shrink-0">{a.type}</Badge>
-                  <span className="text-sm flex-1 truncate">{a.title}</span>
-                  {a.impactValue > 0 && <span className="text-xs text-muted-foreground font-mono">{fmt(a.impactValue)}</span>}
-                  {a.ageDays > 0 && <span className="text-xs text-muted-foreground">{a.ageDays}d</span>}
-                  <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => navigate(a.link)}>
-                    {actionLabel(a.actionType)}<ArrowRight className="h-3 w-3 ml-1" />
-                  </Button>
+                  <span className="text-sm flex-1 truncate w-full sm:w-auto">{a.title}</span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    {a.impactValue > 0 && <span className="text-xs text-muted-foreground font-mono">{fmt(a.impactValue)}</span>}
+                    <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => navigate(a.link)}>
+                      {actionLabel(a.actionType)}<ArrowRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
