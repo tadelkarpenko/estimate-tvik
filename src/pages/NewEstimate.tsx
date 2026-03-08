@@ -175,7 +175,13 @@ export default function NewEstimate() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
-  const update = (updates: Partial<Estimate>) => setForm(prev => ({ ...prev, ...updates }));
+  const update = (updates: Partial<Estimate>) => {
+    // Auto-sync legacy project_type when project_category changes
+    if (updates.project_category) {
+      updates.project_type = categoryToLegacyType(updates.project_category as ProjectCategory);
+    }
+    setForm(prev => ({ ...prev, ...updates }));
+  };
 
   const validate = () => {
     const errs: Record<string, string> = {};
