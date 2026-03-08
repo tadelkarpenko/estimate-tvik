@@ -668,7 +668,133 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   }, [estimateDbId, selectedArea, media, estimate, isApproved, toast, onUpdate]);
 
 
-  const sendAreaToQueue = async () => {
+  // ─── Merge Analysis (Patch 6) ───
+  const analyzeMerge = useCallback(async () => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+    if (!selectedArea) {
+      toast({ title: 'Select an area first', variant: 'destructive' });
+      return;
+    }
+    if (isApproved) {
+      toast({ title: 'Estimate is approved', description: 'Merge analysis is advisory only.', variant: 'destructive' });
+    }
+
+    setMergeAnalysisLoading(true);
+    const batchId = crypto.randomUUID();
+
+    try {
+      // Build upstream structured outputs
+      const typedOutput = selectedArea.notes_text.trim()
+        ? `Notes: ${selectedArea.notes_text}\nQuick tags: ${selectedArea.quick_tags || 'None'}`
+        : '';
+      const voiceOutput = selectedArea.voice_analysis_status === 'Complete'
+        ? `Summary: ${selectedArea.latest_ai_summary}\nVisible findings: ${selectedArea.visible_findings}\nScope items: ${selectedArea.likely_scope_items}\nRisks: ${selectedArea.possible_hidden_risks}\nTrades: ${selectedArea.ai_detected_trades}\nMissing info: ${selectedArea.missing_info_questions}`
+        : '';
+      const photoOutput = selectedArea.photo_analysis_status === 'Complete'
+        ? `Photo summary: ${selectedArea.photo_analysis_summary}\nVisible findings: ${selectedArea.visible_findings}\nMissing visual info: ${selectedArea.missing_visual_information}\nTrades: ${selectedArea.ai_detected_trades}`
+        : '';
+
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'area_merge_analysis',
+          data: {
+            area_name: selectedArea.area_name || '',
+            area_type: selectedArea.area_type || '',
+            project_type: estimate.project_type || '',
+            current_status: estimate.status || 'Draft',
+            quick_tags: selectedArea.quick_tags || '',
+            typed_intake_output: typedOutput || 'Not available',
+            voice_walkthrough_output: voiceOutput || 'Not available',
+            photo_analysis_output: photoOutput || 'Not available',
+            current_line_items: '',
+            current_risk_notes: estimate.possible_hidden_risks || '',
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setMergeAnalysisResult(structured);
+
+      // Update area merge fields if not approved
+      if (!isApproved) {
+        const updatedArea: EstimateArea = {
+          ...selectedArea,
+          merged_scope_summary: structured.merged_scope_summary || '',
+          merged_visible_facts: structured.merged_visible_facts || '',
+          merged_inferences: structured.merged_inferences || '',
+          merged_needs_verification: structured.merged_needs_verification || '',
+          merged_risks: structured.merged_risks || '',
+          merged_trade_detection: structured.merged_trade_detection || '',
+          merged_missing_questions: structured.merged_missing_questions || '',
+          merged_confidence: structured.merged_confidence || 'Medium',
+          merged_last_updated_at: new Date().toISOString(),
+          merged_analysis_status: 'Complete',
+          latest_merge_batch_id: batchId,
+          conflict_summary: structured.conflict_summary || '',
+          site_visit_flag: structured.site_visit_recommended || selectedArea.site_visit_flag,
+          site_visit_reason: structured.site_visit_reason || selectedArea.site_visit_reason,
+        };
+
+        await saveEstimateArea(updatedArea);
+        setAreas(prev => prev.map(a => a.id === selectedArea.id ? updatedArea : a));
+      }
+
+      // Create queue items
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const newSuggestions = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          area_id: selectedArea.id || null,
+          source_type: 'merged' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'internal_note',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Merge Analysis AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || '',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'merge_analysis',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: selectedArea.area_name || 'Merge',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `merge-${estimateDbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(newSuggestions);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Merge analysis complete', description: `${structured.merged_confidence} confidence. ${structured.review_queue_items?.length || 0} suggestions queued.` });
+    } catch (e: any) {
+      if (selectedArea) {
+        const failedArea = { ...selectedArea, merged_analysis_status: 'Failed' as const };
+        setAreas(prev => prev.map(a => a.id === selectedArea.id ? failedArea : a));
+      }
+      toast({ title: 'Merge analysis failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setMergeAnalysisLoading(false);
+    }
+  }, [estimateDbId, selectedArea, estimate, isApproved, toast, onUpdate]);
+
+
     if (!areaFindings || !estimateDbId || !selectedArea) {
       toast({ title: 'Run analysis first', variant: 'destructive' });
       return;
