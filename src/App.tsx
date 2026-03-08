@@ -19,6 +19,7 @@ import ContractDetail from "./pages/ContractDetail";
 import JobsList from "./pages/JobsList";
 import JobDetail from "./pages/JobDetail";
 import JobCalendar from "./pages/JobCalendar";
+import MobileFieldCapture from "./pages/MobileFieldCapture";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
