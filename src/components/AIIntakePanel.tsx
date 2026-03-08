@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Sparkles, Camera, HelpCircle, RefreshCw, CheckCircle, AlertTriangle,
   ChevronDown, ChevronRight, Eye, Shield, Wrench, FileQuestion, MapPin,
-  Mic, Send, ClipboardList, X, Edit, ThumbsUp, ThumbsDown,
-  Plus, Trash2, BarChart3, Home,
+  Mic, MicOff, Send, ClipboardList, X, Edit, ThumbsUp, ThumbsDown,
+  Plus, Trash2, BarChart3, Home, Square,
 } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import type { Estimate, EstimateMedia, AIConfidence } from '@/lib/types';
