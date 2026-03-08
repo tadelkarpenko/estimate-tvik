@@ -385,7 +385,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setInitialIntakeLoading(false);
     }
-  }, [estimateDbId, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
+  }, [estimateDbId, ensureSaved, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
 
   // ─── Area-Level AI Analysis ───
   const analyzeArea = useCallback(async () => {
