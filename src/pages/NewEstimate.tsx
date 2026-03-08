@@ -762,22 +762,42 @@ export default function NewEstimate() {
       {/* Form Fields */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader><CardTitle className="text-base">Project Details</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+          <CardHeader><CardTitle className="text-base">Project Classification</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label className="font-semibold">Project Category *</Label>
+              <p className="text-xs text-muted-foreground mb-1">High-level project type</p>
+              <Select value={form.project_category || 'Custom Scope'} onValueChange={v => update({ project_category: v as ProjectCategory })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PROJECT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {errors.project_category && <p className="text-xs text-destructive mt-1">{errors.project_category}</p>}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Project Type *</Label>
-                <Select value={form.project_type} onValueChange={v => update({ project_type: v as ProjectType })}>
+                <Label className="font-semibold">Scope Class</Label>
+                <p className="text-xs text-muted-foreground mb-1">Internal estimating logic</p>
+                <Select value={form.scope_class || 'Full-Scope Multi-Trade'} onValueChange={v => update({ scope_class: v as ScopeClass })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Bath">Bath</SelectItem>
-                    <SelectItem value="Full Rehab">Full Rehab</SelectItem>
-                    <SelectItem value="Kitchen">Kitchen</SelectItem>
-                    <SelectItem value="Small Job">Small Job</SelectItem>
+                    {SCOPE_CLASSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                {errors.project_type && <p className="text-xs text-destructive mt-1">{errors.project_type}</p>}
               </div>
+              <div>
+                <Label className="font-semibold">Job Size / Complexity</Label>
+                <p className="text-xs text-muted-foreground mb-1">Expected scope scale</p>
+                <Select value={form.job_complexity || 'Standard Scope'} onValueChange={v => update({ job_complexity: v as JobComplexity })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {JOB_COMPLEXITIES.map(j => <SelectItem key={j} value={j}>{j}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Finish Level</Label>
                 <Select value={form.finish_level} onValueChange={v => update({ finish_level: v as FinishLevel })}>
@@ -785,6 +805,7 @@ export default function NewEstimate() {
                   <SelectContent><SelectItem value="Basic">Basic</SelectItem><SelectItem value="Mid">Mid</SelectItem><SelectItem value="High">High</SelectItem><SelectItem value="Luxury">Luxury</SelectItem></SelectContent>
                 </Select>
               </div>
+              <div><Label>Project Name</Label><Input value={form.project_name || ''} onChange={e => update({ project_name: e.target.value })} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {form.project_type !== 'Small Job' && (
@@ -801,7 +822,7 @@ export default function NewEstimate() {
                   {errors.fixture_count && <p className="text-xs text-destructive mt-1">{errors.fixture_count}</p>}
                 </div>
               )}
-              {form.project_type === 'Small Job' && (
+              {form.job_complexity === 'Quick Repair' && (
                 <div>
                   <Label>Labor Hours *</Label>
                   <Input type="number" value={form.labor_hours || ''} onChange={e => update({ labor_hours: Number(e.target.value) })} />
@@ -817,7 +838,6 @@ export default function NewEstimate() {
               <Switch checked={form.finish_materials_included} onCheckedChange={v => update({ finish_materials_included: v })} />
               <Label>Finish Materials Included</Label>
             </div>
-            <div><Label>Project Name</Label><Input value={form.project_name || ''} onChange={e => update({ project_name: e.target.value })} /></div>
           </CardContent>
         </Card>
 
