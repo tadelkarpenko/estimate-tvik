@@ -36,7 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock, Target } from 'lucide-react';
+import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock, Target, HardHat } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import { fitEstimateToBudget, type BudgetFitScenario } from '@/lib/budgetFitEngine';
 import { useToast } from '@/hooks/use-toast';
@@ -1010,6 +1010,9 @@ export default function NewEstimate() {
                 <Briefcase className="mr-1 h-4 w-4" />View Contract
               </Button>
             )}
+            {form.status === 'Accepted' && estimateDbId && (
+              <JobButton estimateDbId={estimateDbId} estimate={form as Estimate} />
+            )}
           </div>
         </div>
       )}
@@ -1502,5 +1505,53 @@ function SourcePill({ source, confidence, evidenceSource }: { source: string; co
 function MiniCard({ label, value }: { label: string; value: string }) {
   return (
     <Card><CardContent className="pt-3 pb-2 px-3"><p className="text-xs text-muted-foreground">{label}</p><p className="text-base font-bold">{value}</p></CardContent></Card>
+  );
+}
+
+function JobButton({ estimateDbId, estimate }: { estimateDbId: string; estimate: Estimate }) {
+  const [existingJob, setExistingJob] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    import('@/lib/jobStore').then(({ getJobByEstimateId }) =>
+      getJobByEstimateId(estimateDbId).then(j => { setExistingJob(j); setLoading(false); })
+    );
+  }, [estimateDbId]);
+
+  if (loading) return null;
+
+  if (existingJob) {
+    return (
+      <Button variant="outline" onClick={() => navigate(`/jobs/${existingJob.id}`)} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+        <HardHat className="mr-1 h-4 w-4" />Open Job
+      </Button>
+    );
+  }
+
+  return (
+    <Button variant="outline" disabled={creating} onClick={async () => {
+      setCreating(true);
+      try {
+        const { createJob } = await import('@/lib/jobStore');
+        const job = await createJob({
+          estimate_id: estimateDbId,
+          job_title: `TVIK Job - ${estimate.client_name || estimate.project_address || estimate.estimate_id}`,
+          property_address: estimate.project_address || '',
+          client_name: estimate.client_name || '',
+          client_email: estimate.client_email || '',
+          client_phone: estimate.client_phone || '',
+        });
+        toast({ title: 'Job created', description: job.job_id });
+        navigate(`/jobs/${job.id}`);
+      } catch (e: any) {
+        toast({ title: 'Error creating job', description: e.message, variant: 'destructive' });
+        setCreating(false);
+      }
+    }} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+      <HardHat className="mr-1 h-4 w-4" />{creating ? 'Creating…' : 'Create Job'}
+    </Button>
   );
 }

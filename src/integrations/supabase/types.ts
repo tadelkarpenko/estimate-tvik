@@ -1052,6 +1052,119 @@ export type Database = {
           },
         ]
       }
+      jobs: {
+        Row: {
+          assigned_crew: string
+          calendar_event_id: string
+          client_email: string
+          client_name: string
+          client_phone: string
+          created_at: string
+          created_by: string
+          created_from_estimate: boolean
+          crew_lead_name: string
+          crew_lead_phone: string
+          end_datetime: string | null
+          estimate_id: string
+          id: string
+          internal_notes: string
+          job_id: string
+          job_status: string
+          job_title: string
+          last_notification_at: string | null
+          notification_status_summary: string
+          property_address: string
+          reminder_1h_status: string
+          reminder_24h_status: string
+          reminder_4h_status: string
+          reminder_email_enabled: boolean
+          reminder_sms_enabled: boolean
+          reminder_telegram_enabled: boolean
+          reminder_whatsapp_enabled: boolean
+          scheduling_ready: boolean
+          start_datetime: string | null
+          updated_at: string
+          updated_by: string
+          user_id: string
+        }
+        Insert: {
+          assigned_crew?: string
+          calendar_event_id?: string
+          client_email?: string
+          client_name?: string
+          client_phone?: string
+          created_at?: string
+          created_by?: string
+          created_from_estimate?: boolean
+          crew_lead_name?: string
+          crew_lead_phone?: string
+          end_datetime?: string | null
+          estimate_id: string
+          id?: string
+          internal_notes?: string
+          job_id: string
+          job_status?: string
+          job_title?: string
+          last_notification_at?: string | null
+          notification_status_summary?: string
+          property_address?: string
+          reminder_1h_status?: string
+          reminder_24h_status?: string
+          reminder_4h_status?: string
+          reminder_email_enabled?: boolean
+          reminder_sms_enabled?: boolean
+          reminder_telegram_enabled?: boolean
+          reminder_whatsapp_enabled?: boolean
+          scheduling_ready?: boolean
+          start_datetime?: string | null
+          updated_at?: string
+          updated_by?: string
+          user_id: string
+        }
+        Update: {
+          assigned_crew?: string
+          calendar_event_id?: string
+          client_email?: string
+          client_name?: string
+          client_phone?: string
+          created_at?: string
+          created_by?: string
+          created_from_estimate?: boolean
+          crew_lead_name?: string
+          crew_lead_phone?: string
+          end_datetime?: string | null
+          estimate_id?: string
+          id?: string
+          internal_notes?: string
+          job_id?: string
+          job_status?: string
+          job_title?: string
+          last_notification_at?: string | null
+          notification_status_summary?: string
+          property_address?: string
+          reminder_1h_status?: string
+          reminder_24h_status?: string
+          reminder_4h_status?: string
+          reminder_email_enabled?: boolean
+          reminder_sms_enabled?: boolean
+          reminder_telegram_enabled?: boolean
+          reminder_whatsapp_enabled?: boolean
+          scheduling_ready?: boolean
+          start_datetime?: string | null
+          updated_at?: string
+          updated_by?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pm_scorecard_snapshots: {
         Row: {
           change_order_quality: number
