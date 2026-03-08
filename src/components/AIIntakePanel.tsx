@@ -118,6 +118,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [mergeAnalysisResult, setMergeAnalysisResult] = useState<any>(null);
   const [missingInfoLoading, setMissingInfoLoading] = useState(false);
   const [missingInfoResult, setMissingInfoResult] = useState<any>(null);
+  const [completenessLoading, setCompletenessLoading] = useState(false);
+  const [completenessResult, setCompletenessResult] = useState<any>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
