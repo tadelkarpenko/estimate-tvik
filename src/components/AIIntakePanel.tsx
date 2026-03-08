@@ -367,6 +367,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
     const hasExistingData = selectedArea.latest_ai_summary.length > 0;
     const workflow = hasExistingData ? 'revision_check' : 'intake_fresh';
+    const batchId = crypto.randomUUID();
 
     const combinedInput = [
       selectedArea.notes_text.trim(),
@@ -375,7 +376,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     ].filter(Boolean).join('');
 
     try {
-      const areaMedia = media.filter(() => true); // all media for now
+      const areaMedia = media.filter(() => true);
       const photoAnalyses = areaMedia.map(m => ({ caption: m.caption, url: m.file_url }));
 
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
@@ -428,7 +429,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
       setAreaFindings(parsed);
 
-      // Update area with findings
+      const isLowConf = parsed.confidence === 'Low';
+
+      // Update area with findings + voice lifecycle
       const updatedArea: EstimateArea = {
         ...selectedArea,
         visible_findings: parsed.visible_findings || '',
@@ -440,21 +443,106 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         suggested_assumptions: parsed.suggested_assumptions || '',
         missing_info_questions: parsed.missing_info_questions || '',
         confidence: parsed.confidence || 'Medium',
+        low_confidence_warning: isLowConf,
         site_visit_flag: parsed.site_visit_required ?? false,
+        site_visit_reason: parsed.site_visit_required ? `AI analysis flagged low confidence or hidden conditions in ${selectedArea.area_name}.` : selectedArea.site_visit_reason,
         latest_ai_summary: parsed.intake_summary || '',
+        voice_transcript_cleaned: parsed.intake_summary || selectedArea.voice_transcript_cleaned,
+        voice_analysis_status: 'Complete',
+        latest_voice_batch_id: batchId,
         revision_status: hasExistingData ? 'Updated' : 'Original',
       };
 
       await saveEstimateArea(updatedArea);
       setAreas(prev => prev.map(a => a.id === selectedArea.id ? updatedArea : a));
 
-      toast({ title: 'Area analysis complete', description: `${selectedArea.area_name}: ${parsed.confidence} confidence` });
+      // Auto-create queue items from findings
+      if (!isApproved) {
+        const sourceType: SuggestionSourceType = selectedArea.voice_transcript_raw.trim()
+          ? (media.length > 0 ? 'merged' : 'voice')
+          : (media.length > 0 ? 'photo' : 'text');
+        const newSuggestions: any[] = [];
+
+        for (const mapping of FINDINGS_TO_SUGGESTIONS) {
+          const value = parsed[mapping.findingsKey];
+          if (typeof value === 'string' && value.trim()) {
+            const items = value.split(/\n/).filter(l => l.trim().startsWith('-') || l.trim().startsWith('•') || l.trim().match(/^\d+\./));
+            const processItems = items.length > 0 ? items : [value];
+            for (const item of processItems) {
+              const cleanItem = item.replace(/^[-•\d.)\s]+/, '').trim();
+              if (!cleanItem) continue;
+              newSuggestions.push({
+                suggestion_id: crypto.randomUUID(),
+                estimate_id: estimateDbId,
+                source_type: sourceType,
+                suggestion_type: mapping.type,
+                confidence: parsed.confidence,
+                evidence_summary: `Area: ${selectedArea.area_name}. ${parsed.intake_summary || ''}`.slice(0, 200),
+                reason_for_suggestion: `AI Walkthrough (${sourceType}) — ${selectedArea.area_name} — ${mapping.type}`,
+                suggested_value: cleanItem,
+                apply_target: mapping.target,
+                status: 'pending',
+                decision_state: 'pending',
+                reviewer_notes: '',
+                approved_by: '',
+                edited_value: '',
+                area_id: selectedArea.id,
+                suggestion_batch_id: batchId,
+                block_name: 'voice_walkthrough',
+                priority_level: isLowConf ? 'High' : 'Medium',
+                queue_group: selectedArea.area_name,
+                source_timestamp: new Date().toISOString(),
+                idempotency_key: `walk-${selectedArea.id}-${batchId.slice(0, 8)}`,
+              });
+            }
+          }
+        }
+
+        if (parsed.site_visit_required) {
+          newSuggestions.push({
+            suggestion_id: crypto.randomUUID(),
+            estimate_id: estimateDbId,
+            source_type: sourceType,
+            suggestion_type: 'site_visit_recommendation',
+            confidence: parsed.confidence,
+            evidence_summary: `Area: ${selectedArea.area_name}`,
+            reason_for_suggestion: 'Confidence is low or hidden conditions are likely.',
+            suggested_value: `Site visit recommended for ${selectedArea.area_name}.`,
+            apply_target: 'site_visit_required',
+            status: 'pending',
+            decision_state: 'pending',
+            reviewer_notes: '',
+            approved_by: '',
+            edited_value: '',
+            area_id: selectedArea.id,
+            suggestion_batch_id: batchId,
+            block_name: 'voice_walkthrough',
+            priority_level: 'High',
+            queue_group: selectedArea.area_name,
+            source_timestamp: new Date().toISOString(),
+            idempotency_key: `walk-sv-${selectedArea.id}-${batchId.slice(0, 8)}`,
+          });
+        }
+
+        if (newSuggestions.length > 0) {
+          await insertSuggestions(newSuggestions);
+          const updated = await getSuggestions(estimateDbId);
+          setSuggestions(updated);
+        }
+
+        toast({ title: 'Voice walkthrough complete', description: `${selectedArea.area_name}: ${parsed.confidence} confidence. ${newSuggestions.length} suggestions queued.` });
+      } else {
+        toast({ title: 'Area analysis complete (advisory)', description: `${selectedArea.area_name}: ${parsed.confidence} confidence` });
+      }
     } catch (e: any) {
+      // Mark analysis as failed
+      const failedArea = { ...selectedArea, voice_analysis_status: 'Failed' as const };
+      setAreas(prev => prev.map(a => a.id === selectedArea.id ? failedArea : a));
       toast({ title: 'Analysis failed', description: e.message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
-  }, [selectedArea, estimateDbId, estimate, media, toast]);
+  }, [selectedArea, estimateDbId, estimate, media, isApproved, toast, onUpdate]);
 
   // ─── Send Area to Review Queue ───
   const sendAreaToQueue = async () => {
