@@ -29,6 +29,7 @@ import {
   type EstimateArea, type AreaType, type EstimateRollup,
 } from '@/lib/areaStore';
 import { saveHealthCheck } from '@/lib/healthCheckStore';
+import { generateWritePlan, saveWritePlan, updateWritePlanStatus, type WritePlan, type WritePlanFieldUpdate, type WritePlanLineItem, type WritePlanAuditEntry } from '@/lib/writePlanStore';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
