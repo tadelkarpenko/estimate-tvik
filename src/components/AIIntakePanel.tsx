@@ -748,19 +748,45 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                   {/* Voice Transcript */}
                   <Card>
                     <CardHeader className="py-2 px-3">
-                      <CardTitle className="text-xs flex items-center gap-1.5"><Mic className="h-3.5 w-3.5" /> Voice Transcript</CardTitle>
+                      <CardTitle className="text-xs flex items-center gap-1.5">
+                        <Mic className="h-3.5 w-3.5" /> Voice Transcript
+                        {isRecording && <Badge className="bg-destructive text-destructive-foreground text-xs animate-pulse">Recording…</Badge>}
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 pb-3 space-y-2">
+                      {/* Recording controls */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {speechSupported ? (
+                          isRecording ? (
+                            <Button size="sm" variant="destructive" onClick={stopRecording} className="text-xs h-9 px-4">
+                              <Square className="h-3 w-3 mr-1" />Stop Recording
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" onClick={startRecording} disabled={loading} className="text-xs h-9 px-4">
+                              <Mic className="h-3 w-3 mr-1" />Start Recording
+                            </Button>
+                          )
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">Voice recording not supported in this browser. Paste transcript below.</p>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => updateArea('voice_transcript_raw', '')} disabled={loading || !selectedArea.voice_transcript_raw || isRecording} className="text-xs h-9">
+                          <X className="h-3 w-3 mr-1" />Clear
+                        </Button>
+                      </div>
+
+                      {/* Interim transcript */}
+                      {interimTranscript && (
+                        <p className="text-xs text-muted-foreground italic border-l-2 border-primary pl-2">{interimTranscript}</p>
+                      )}
+
+                      {/* Transcript textarea */}
                       <Textarea
                         value={selectedArea.voice_transcript_raw}
                         onChange={e => updateArea('voice_transcript_raw', e.target.value)}
-                        placeholder="Paste walkthrough transcript or dictation output..."
-                        className="text-xs min-h-[60px]"
-                        disabled={loading}
+                        placeholder="Tap 'Start Recording' to dictate, or paste transcript here..."
+                        className="text-xs min-h-[80px]"
+                        disabled={loading || isRecording}
                       />
-                      <Button size="sm" variant="outline" onClick={() => updateArea('voice_transcript_raw', '')} disabled={loading || !selectedArea.voice_transcript_raw} className="text-xs h-7">
-                        <X className="h-3 w-3 mr-1" />Clear
-                      </Button>
                     </CardContent>
                   </Card>
 
