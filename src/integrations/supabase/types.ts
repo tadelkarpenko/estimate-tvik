@@ -730,14 +730,26 @@ export type Database = {
           area_sequence: number
           area_type: string
           confidence: string
+          conflict_summary: string
           created_at: string
           estimate_id: string
           id: string
           latest_ai_summary: string
+          latest_merge_batch_id: string
           latest_photo_batch_id: string
           latest_voice_batch_id: string
           likely_scope_items: string
           low_confidence_warning: boolean
+          merged_analysis_status: string
+          merged_confidence: string
+          merged_inferences: string
+          merged_last_updated_at: string | null
+          merged_missing_questions: string
+          merged_needs_verification: string
+          merged_risks: string
+          merged_scope_summary: string
+          merged_trade_detection: string
+          merged_visible_facts: string
           missing_info_questions: string
           missing_visual_information: string
           notes_text: string
@@ -769,14 +781,26 @@ export type Database = {
           area_sequence?: number
           area_type?: string
           confidence?: string
+          conflict_summary?: string
           created_at?: string
           estimate_id: string
           id?: string
           latest_ai_summary?: string
+          latest_merge_batch_id?: string
           latest_photo_batch_id?: string
           latest_voice_batch_id?: string
           likely_scope_items?: string
           low_confidence_warning?: boolean
+          merged_analysis_status?: string
+          merged_confidence?: string
+          merged_inferences?: string
+          merged_last_updated_at?: string | null
+          merged_missing_questions?: string
+          merged_needs_verification?: string
+          merged_risks?: string
+          merged_scope_summary?: string
+          merged_trade_detection?: string
+          merged_visible_facts?: string
           missing_info_questions?: string
           missing_visual_information?: string
           notes_text?: string
@@ -808,14 +832,26 @@ export type Database = {
           area_sequence?: number
           area_type?: string
           confidence?: string
+          conflict_summary?: string
           created_at?: string
           estimate_id?: string
           id?: string
           latest_ai_summary?: string
+          latest_merge_batch_id?: string
           latest_photo_batch_id?: string
           latest_voice_batch_id?: string
           likely_scope_items?: string
           low_confidence_warning?: boolean
+          merged_analysis_status?: string
+          merged_confidence?: string
+          merged_inferences?: string
+          merged_last_updated_at?: string | null
+          merged_missing_questions?: string
+          merged_needs_verification?: string
+          merged_risks?: string
+          merged_scope_summary?: string
+          merged_trade_detection?: string
+          merged_visible_facts?: string
           missing_info_questions?: string
           missing_visual_information?: string
           notes_text?: string
@@ -1264,10 +1300,21 @@ export type Database = {
           labor_hours: number
           labor_subtotal: number
           last_revision_summary: string
+          latest_merge_batch_id: string
           likely_scope_items: string
           line_items_json: string
           material_subtotal: number
           material_volatility_flag: boolean
+          merged_analysis_status: string
+          merged_confidence: string
+          merged_inferences: string
+          merged_last_updated_at: string | null
+          merged_missing_questions: string
+          merged_needs_verification: string
+          merged_risks: string
+          merged_scope_summary: string
+          merged_trade_detection: string
+          merged_visible_facts: string
           missing_info_questions: string
           overall_risk_level: string
           overhead_pct: number
@@ -1357,10 +1404,21 @@ export type Database = {
           labor_hours?: number
           labor_subtotal?: number
           last_revision_summary?: string
+          latest_merge_batch_id?: string
           likely_scope_items?: string
           line_items_json?: string
           material_subtotal?: number
           material_volatility_flag?: boolean
+          merged_analysis_status?: string
+          merged_confidence?: string
+          merged_inferences?: string
+          merged_last_updated_at?: string | null
+          merged_missing_questions?: string
+          merged_needs_verification?: string
+          merged_risks?: string
+          merged_scope_summary?: string
+          merged_trade_detection?: string
+          merged_visible_facts?: string
           missing_info_questions?: string
           overall_risk_level?: string
           overhead_pct?: number
@@ -1450,10 +1508,21 @@ export type Database = {
           labor_hours?: number
           labor_subtotal?: number
           last_revision_summary?: string
+          latest_merge_batch_id?: string
           likely_scope_items?: string
           line_items_json?: string
           material_subtotal?: number
           material_volatility_flag?: boolean
+          merged_analysis_status?: string
+          merged_confidence?: string
+          merged_inferences?: string
+          merged_last_updated_at?: string | null
+          merged_missing_questions?: string
+          merged_needs_verification?: string
+          merged_risks?: string
+          merged_scope_summary?: string
+          merged_trade_detection?: string
+          merged_visible_facts?: string
           missing_info_questions?: string
           overall_risk_level?: string
           overhead_pct?: number
