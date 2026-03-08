@@ -398,6 +398,14 @@ function rowToEstimate(r: any): Estimate {
     intake_last_updated_at: r.intake_last_updated_at || null,
     revision_needed_warning: r.revision_needed_warning ?? false,
     ai_apply_status: r.ai_apply_status || 'Not Applied',
+    // Voice intake fields
+    voice_transcript_raw: r.voice_transcript_raw || '',
+    voice_transcript_cleaned: r.voice_transcript_cleaned || '',
+    voice_detected_scope: r.voice_detected_scope || '',
+    voice_detected_risks: r.voice_detected_risks || '',
+    voice_detected_rooms: r.voice_detected_rooms || '',
+    voice_detected_material_preferences: r.voice_detected_material_preferences || '',
+    voice_last_updated_at: r.voice_last_updated_at || null,
   } as Estimate;
 }
 
