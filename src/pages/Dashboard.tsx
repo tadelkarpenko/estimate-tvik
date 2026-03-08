@@ -129,6 +129,8 @@ export default function Dashboard() {
         <Button size="sm" onClick={() => navigate('/estimates/new')}><Plus className="h-3 w-3 mr-1" />New Estimate</Button>
       </div>
 
+      <PWAInstallGuide />
+
       {/* ACTION QUEUE */}
       {actions.length > 0 && (
         <Card className="border-destructive/20">
