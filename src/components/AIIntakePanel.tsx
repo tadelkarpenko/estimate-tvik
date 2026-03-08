@@ -354,7 +354,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         const batchId = crypto.randomUUID();
         const queueItems = structured.review_queue_items.map((item: any) => ({
           suggestion_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
+          estimate_id: dbId,
           source_type: 'text' as SuggestionSourceType,
           suggestion_type: item.suggestion_type || 'internal_note',
           confidence: item.confidence || 'Medium',
@@ -372,10 +372,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
           queue_group: 'Initial Intake',
           source_timestamp: new Date().toISOString(),
-          idempotency_key: `initial-${estimateDbId}-${crypto.randomUUID().slice(0, 8)}`,
+          idempotency_key: `initial-${dbId}-${crypto.randomUUID().slice(0, 8)}`,
         }));
         await insertSuggestions(queueItems);
-        const updated = await getSuggestions(estimateDbId);
+        const updated = await getSuggestions(dbId);
         setSuggestions(updated);
       }
 
@@ -385,11 +385,13 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setInitialIntakeLoading(false);
     }
-  }, [estimateDbId, ensureSaved, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
+  }, [ensureSaved, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
 
   // ─── Area-Level AI Analysis ───
   const analyzeArea = useCallback(async () => {
-    if (!selectedArea || !estimateDbId) return;
+    if (!selectedArea) return;
+    const resolvedId = estimateDbId;
+    if (!resolvedId) return;
     setLoading(true);
 
     // Save area first
@@ -503,26 +505,26 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
               if (!cleanItem) continue;
               newSuggestions.push({
                 suggestion_id: crypto.randomUUID(),
-                estimate_id: estimateDbId,
-                source_type: sourceType,
-                suggestion_type: mapping.type,
-                confidence: parsed.confidence,
-                evidence_summary: `Area: ${selectedArea.area_name}. ${parsed.intake_summary || ''}`.slice(0, 200),
-                reason_for_suggestion: `AI Walkthrough (${sourceType}) — ${selectedArea.area_name} — ${mapping.type}`,
-                suggested_value: cleanItem,
-                apply_target: mapping.target,
-                status: 'pending',
-                decision_state: 'pending',
-                reviewer_notes: '',
-                approved_by: '',
-                edited_value: '',
-                area_id: selectedArea.id,
-                suggestion_batch_id: batchId,
-                block_name: 'voice_walkthrough',
-                priority_level: isLowConf ? 'High' : 'Medium',
-                queue_group: selectedArea.area_name,
-                source_timestamp: new Date().toISOString(),
-                idempotency_key: `walk-${selectedArea.id}-${batchId.slice(0, 8)}`,
+              estimate_id: resolvedId,
+              source_type: sourceType,
+              suggestion_type: mapping.type,
+              confidence: parsed.confidence,
+              evidence_summary: `Area: ${selectedArea.area_name}. ${parsed.intake_summary || ''}`.slice(0, 200),
+              reason_for_suggestion: `AI Walkthrough (${sourceType}) — ${selectedArea.area_name} — ${mapping.type}`,
+              suggested_value: cleanItem,
+              apply_target: mapping.target,
+              status: 'pending',
+              decision_state: 'pending',
+              reviewer_notes: '',
+              approved_by: '',
+              edited_value: '',
+              area_id: selectedArea.id,
+              suggestion_batch_id: batchId,
+              block_name: 'voice_walkthrough',
+              priority_level: isLowConf ? 'High' : 'Medium',
+              queue_group: selectedArea.area_name,
+              source_timestamp: new Date().toISOString(),
+              idempotency_key: `walk-${selectedArea.id}-${batchId.slice(0, 8)}`,
               });
             }
           }
@@ -531,7 +533,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         if (parsed.site_visit_required) {
           newSuggestions.push({
             suggestion_id: crypto.randomUUID(),
-            estimate_id: estimateDbId,
+            estimate_id: resolvedId,
             source_type: sourceType,
             suggestion_type: 'site_visit_recommendation',
             confidence: parsed.confidence,
@@ -556,7 +558,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
         if (newSuggestions.length > 0) {
           await insertSuggestions(newSuggestions);
-          const updated = await getSuggestions(estimateDbId);
+          const updated = await getSuggestions(resolvedId);
           setSuggestions(updated);
         }
 
@@ -576,7 +578,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
   // ─── Photo Analysis (Patch 5) ───
   const analyzePhotos = useCallback(async () => {
-    if (!estimateDbId || media.length === 0) {
+    const resolvedPhotoId = estimateDbId;
+    if (!resolvedPhotoId || media.length === 0) {
       toast({ title: 'Upload photos first', variant: 'destructive' });
       return;
     }
@@ -655,7 +658,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       if (structured.review_queue_items?.length > 0 && !isApproved) {
         const newSuggestions = structured.review_queue_items.map((item: any) => ({
           suggestion_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
+          estimate_id: resolvedPhotoId,
           area_id: selectedArea?.id || null,
           source_type: 'photo' as SuggestionSourceType,
           suggestion_type: item.suggestion_type || 'internal_note',
@@ -674,10 +677,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
           queue_group: selectedArea?.area_name || 'Photos',
           source_timestamp: new Date().toISOString(),
-          idempotency_key: `photo-${estimateDbId}-${selectedArea?.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+          idempotency_key: `photo-${resolvedPhotoId}-${selectedArea?.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
         }));
         await insertSuggestions(newSuggestions);
-        const updated = await getSuggestions(estimateDbId);
+        const updated = await getSuggestions(resolvedPhotoId);
         setSuggestions(updated);
       }
 
@@ -780,7 +783,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       if (structured.review_queue_items?.length > 0 && !isApproved) {
         const newSuggestions = structured.review_queue_items.map((item: any) => ({
           suggestion_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
+          estimate_id: dbId,
           area_id: selectedArea.id || null,
           source_type: 'merged' as SuggestionSourceType,
           suggestion_type: item.suggestion_type || 'internal_note',
@@ -799,10 +802,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
           queue_group: selectedArea.area_name || 'Merge',
           source_timestamp: new Date().toISOString(),
-          idempotency_key: `merge-${estimateDbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+          idempotency_key: `merge-${dbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
         }));
         await insertSuggestions(newSuggestions);
-        const updated = await getSuggestions(estimateDbId);
+        const updated = await getSuggestions(dbId);
         setSuggestions(updated);
       }
 
@@ -816,7 +819,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMergeAnalysisLoading(false);
     }
-  }, [estimateDbId, ensureSaved, selectedArea, estimate, isApproved, toast, onUpdate]);
+  }, [ensureSaved, selectedArea, estimate, isApproved, toast, onUpdate]);
 
   // ─── Missing Info Questions (Patch 7) ───
   const generateMissingInfoQuestions = useCallback(async () => {
@@ -893,7 +896,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       if (structured.review_queue_items?.length > 0 && !isApproved) {
         const newSuggestions = structured.review_queue_items.map((item: any) => ({
           suggestion_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
+          estimate_id: dbId,
           area_id: selectedArea.id || null,
           source_type: 'merged' as SuggestionSourceType,
           suggestion_type: item.suggestion_type || 'missing_info',
@@ -912,10 +915,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
           queue_group: selectedArea.area_name || 'Questions',
           source_timestamp: new Date().toISOString(),
-          idempotency_key: `missinginfo-${estimateDbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
+          idempotency_key: `missinginfo-${dbId}-${selectedArea.id || 'est'}-${crypto.randomUUID().slice(0, 8)}`,
         }));
         await insertSuggestions(newSuggestions);
-        const updated = await getSuggestions(estimateDbId);
+        const updated = await getSuggestions(dbId);
         setSuggestions(updated);
       }
 
@@ -925,7 +928,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMissingInfoLoading(false);
     }
-  }, [estimateDbId, ensureSaved, selectedArea, estimate, isApproved, toast]);
+  }, [ensureSaved, selectedArea, estimate, isApproved, toast]);
 
   // ─── Completeness Check (Patch 8) ───
   const runCompletenessCheck = useCallback(async () => {
@@ -991,7 +994,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       // Save health check record
       await saveHealthCheck({
         health_check_id: crypto.randomUUID(),
-        estimate_id: estimateDbId,
+        estimate_id: dbId,
         estimate_version: estimate.version || 'v1.0',
         block_source: 'completeness_check',
         warning_level: structured.warning_level || 'Low',
@@ -1023,7 +1026,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       if (structured.review_queue_items?.length > 0 && !isApproved) {
         const newSuggestions = structured.review_queue_items.map((item: any) => ({
           suggestion_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
+          estimate_id: dbId,
           source_type: 'merged' as SuggestionSourceType,
           suggestion_type: item.suggestion_type || 'internal_note',
           confidence: item.confidence || 'Medium',
@@ -1041,10 +1044,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
           queue_group: 'Completeness Check',
           source_timestamp: new Date().toISOString(),
-          idempotency_key: `cc-${estimateDbId}-${crypto.randomUUID().slice(0, 8)}`,
+          idempotency_key: `cc-${dbId}-${crypto.randomUUID().slice(0, 8)}`,
         }));
         await insertSuggestions(newSuggestions);
-        const updated = await getSuggestions(estimateDbId);
+        const updated = await getSuggestions(dbId);
         setSuggestions(updated);
       }
 
@@ -1054,7 +1057,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setCompletenessLoading(false);
     }
-  }, [estimateDbId, ensureSaved, areas, estimate, isApproved, toast, onUpdate]);
+  }, [ensureSaved, areas, estimate, isApproved, toast, onUpdate]);
 
 
   const sendSuggestionsToQueue = async () => {
