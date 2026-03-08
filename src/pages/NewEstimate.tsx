@@ -752,8 +752,26 @@ export default function NewEstimate() {
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
+  const aiPanelContent = (
+    <AIIntakePanel
+      estimate={form}
+      estimateDbId={estimateDbId}
+      media={media}
+      onUpdate={update}
+      onSave={saveDraft}
+      onMediaChange={async () => {
+        if (estimateDbId) {
+          const med = await getEstimateMedia(estimateDbId);
+          setMedia(med);
+        }
+      }}
+    />
+  );
+
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="flex flex-col lg:flex-row gap-6 max-w-[1600px]">
+      {/* Left: Estimate Form */}
+      <div className="flex-1 min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{isEdit ? `Edit ${form.estimate_id}` : 'New Estimate'}</h1>
         {form.estimate_id && <Badge>{form.status}</Badge>}
