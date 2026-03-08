@@ -111,6 +111,14 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [initialIntakeUrgency, setInitialIntakeUrgency] = useState('');
   const [initialIntakeResult, setInitialIntakeResult] = useState<InitialIntakeResult | null>(null);
   const [initialIntakeLoading, setInitialIntakeLoading] = useState(false);
+
+  // Rollup
+  const [rollup, setRollup] = useState<EstimateRollup | null>(null);
+
+  // Speech recognition
+  const [isRecording, setIsRecording] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const recognitionRef = useRef<any>(null);
   const speechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   const startRecording = useCallback(() => {
