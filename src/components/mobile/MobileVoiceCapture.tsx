@@ -18,7 +18,7 @@ interface MobileVoiceCaptureProps {
 const DRAFT_KEY = (estId: string, areaId: string) => `tvik_voice_draft_${estId}_${areaId}`;
 
 // Check Web Speech API support
-function getSpeechRecognition(): typeof SpeechRecognition | null {
+function getSpeechRecognition(): any {
   const w = window as any;
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
