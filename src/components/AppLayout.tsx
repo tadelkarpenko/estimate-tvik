@@ -9,7 +9,7 @@ export function AppLayout() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="flex items-center border-b bg-card px-3 sm:px-4 shrink-0 min-h-[3rem]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+          <header className="flex items-center border-b bg-card px-3 sm:px-4 shrink-0 min-h-[3rem] safe-area-pt">
             <SidebarTrigger className="h-10 w-10 sm:h-7 sm:w-7" />
             <span className="ml-2 sm:ml-3 text-sm font-medium text-muted-foreground truncate">TVIK Estimator</span>
           </header>
