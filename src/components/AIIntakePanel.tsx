@@ -54,7 +54,7 @@ interface AIIntakePanelProps {
   estimateDbId?: string;
   media: EstimateMedia[];
   onUpdate: (updates: Partial<Estimate>) => void;
-  onSave: () => Promise<void>;
+  onSave: () => Promise<string | undefined>;
   onMediaChange: () => void;
 }
 
