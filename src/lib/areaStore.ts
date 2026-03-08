@@ -196,6 +196,18 @@ export const createDefaultArea = (estimateDbId: string, areaType: AreaType, sequ
   site_visit_reason: '',
   revision_status: 'Original',
   latest_ai_summary: '',
+  merged_scope_summary: '',
+  merged_visible_facts: '',
+  merged_inferences: '',
+  merged_needs_verification: '',
+  merged_risks: '',
+  merged_trade_detection: '',
+  merged_missing_questions: '',
+  merged_confidence: '',
+  merged_last_updated_at: null,
+  merged_analysis_status: 'Not Run',
+  latest_merge_batch_id: '',
+  conflict_summary: '',
 });
 
 // ─── Rollup Logic ───
