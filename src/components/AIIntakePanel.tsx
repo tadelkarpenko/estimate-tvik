@@ -31,6 +31,7 @@ import {
 import { saveHealthCheck } from '@/lib/healthCheckStore';
 import { generateWritePlan, saveWritePlan, updateWritePlanStatus, type WritePlan, type WritePlanFieldUpdate, type WritePlanLineItem, type WritePlanAuditEntry } from '@/lib/writePlanStore';
 import { executeWriteback, type ExecutionResult } from '@/lib/writebackEngine';
+import { runPostWriteRecheck, type PostWriteRecheckResult } from '@/lib/postWriteRecheckEngine';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
