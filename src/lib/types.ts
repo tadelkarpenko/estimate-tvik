@@ -107,6 +107,14 @@ export interface Estimate {
   voice_detected_rooms: string;
   voice_detected_material_preferences: string;
   voice_last_updated_at: string | null;
+  // Rollup fields
+  area_count: number;
+  ai_pending_suggestions_count: number;
+  ai_estimate_health_status: 'Good' | 'Review Needed' | 'High Risk';
+  ai_estimate_rollup_summary: string;
+  ai_revision_review_status: 'No Review Needed' | 'Review Needed' | 'Revision Recommended';
+  estimate_site_visit_recommended: boolean;
+  estimate_confidence_rollup: AIConfidence;
 }
 
 export interface CostLibraryItem {
