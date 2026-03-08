@@ -163,7 +163,7 @@ export default function Dashboard() {
             <Button key={w} size="sm" variant={kpiWindow === w ? 'default' : 'ghost'} className="h-6 text-xs px-2" onClick={() => setKpiWindow(w)}>{w}</Button>
           ))}
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
           <KPI title="Estimates Created" value={estCreated} />
           <KPI title="Estimates Sent" value={estSent} />
           <KPI title="Conversion %" value={`${conversionRate}%`} />
