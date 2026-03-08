@@ -38,7 +38,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock, Target, HardHat, ClipboardList } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import { fitEstimateToBudget, type BudgetFitScenario } from '@/lib/budgetFitEngine';
