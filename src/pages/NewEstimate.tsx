@@ -179,12 +179,13 @@ export default function NewEstimate() {
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!form.project_type) errs.project_type = 'Project type required';
-    if (form.project_type !== 'Small Job' && (!form.sqft || form.sqft <= 0)) errs.sqft = 'Square footage required';
-    if ((form.project_type === 'Bath' || form.project_type === 'Kitchen') && (!form.fixture_count || form.fixture_count <= 0))
+    if (!form.project_category) errs.project_category = 'Project category required';
+    const legacyType = categoryToLegacyType(form.project_category as ProjectCategory || 'Custom Scope');
+    if (legacyType !== 'Small Job' && (!form.sqft || form.sqft <= 0)) errs.sqft = 'Square footage required';
+    if ((legacyType === 'Bath' || legacyType === 'Kitchen') && (!form.fixture_count || form.fixture_count <= 0))
       errs.fixture_count = 'Fixture count required';
-    if (form.project_type === 'Small Job' && (!form.labor_hours || form.labor_hours <= 0))
-      errs.labor_hours = 'Labor hours required for Small Jobs';
+    if (form.job_complexity === 'Quick Repair' && (!form.labor_hours || form.labor_hours <= 0))
+      errs.labor_hours = 'Labor hours required for Quick Repair jobs';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
