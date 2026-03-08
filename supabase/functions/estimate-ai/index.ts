@@ -280,6 +280,50 @@ RULES:
       const content = result.choices?.[0]?.message?.content || "";
       return new Response(JSON.stringify({ content }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    } else if (action === "intake") {
+      // AI Intake Assistant - structured analysis
+      const workflow = data.workflow || "intake_fresh";
+      const userPrompt = `Workflow mode: ${workflow}
+
+Project type: ${data.project_type || 'Unknown'}
+Description: ${data.description || 'None provided'}
+Notes: ${data.notes || 'None'}
+Square footage: ${data.sqft || 'Unknown'}
+Fixture count: ${data.fixture_count || 'Unknown'}
+Finish level: ${data.finish_level || 'Unknown'}
+
+Photo analyses: ${data.photo_analyses ? JSON.stringify(data.photo_analyses) : 'No photos analyzed'}
+
+Existing estimate data: ${data.existing_estimate ? JSON.stringify(data.existing_estimate) : 'No existing estimate'}
+
+Additional context from user: ${data.user_input || 'None'}`;
+
+      messages = [
+        { role: "system", content: INTAKE_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ];
+
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages }),
+      });
+
+      if (!response.ok) {
+        const status = response.status;
+        if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("AI gateway error:", status, await response.text());
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content || "";
+      return new Response(JSON.stringify({ content }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else {
       return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
