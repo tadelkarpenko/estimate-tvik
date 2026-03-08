@@ -108,7 +108,7 @@ export default function EstimatesList() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead><TableHead>Project</TableHead><TableHead>Client</TableHead><TableHead>Type</TableHead>
+                <TableHead>ID</TableHead><TableHead>Project</TableHead><TableHead>Client</TableHead><TableHead>Category</TableHead>
                 <TableHead>City</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Range</TableHead><TableHead>Updated</TableHead><TableHead></TableHead>
               </TableRow>
             </TableHeader>
