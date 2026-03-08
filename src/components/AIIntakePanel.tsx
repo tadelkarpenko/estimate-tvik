@@ -1912,6 +1912,8 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                     <CardContent className="px-3 pb-3">
                       {estimateDbId ? (
                         <MediaUploader folder="estimates" onUploaded={async (url: string, caption: string) => {
+                          const { supabase } = await import('@/integrations/supabase/client');
+                          const { data: { user } } = await supabase.auth.getUser();
                           if (user && estimateDbId) {
                             await supabase.from('estimate_media').insert({
                               estimate_id: estimateDbId,
