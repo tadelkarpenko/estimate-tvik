@@ -115,6 +115,7 @@ export interface Estimate {
   ai_revision_review_status: 'No Review Needed' | 'Review Needed' | 'Revision Recommended';
   estimate_site_visit_recommended: boolean;
   estimate_confidence_rollup: AIConfidence;
+  estimate_completeness_summary: string;
 }
 
 export interface CostLibraryItem {
