@@ -982,51 +982,76 @@ export type Database = {
       }
       estimate_health_checks: {
         Row: {
+          area_id: string | null
           block_approval: boolean
           block_source: string
+          blocking_reason: string
           completeness_score: number
           confidence_rollup: string
           created_at: string
           estimate_id: string
           estimate_version: string
           health_check_id: string
+          human_fix_required: boolean
           id: string
           mismatch_summary: string
+          missing_scope_categories: string
+          override_allowed: boolean
+          override_reason_required: boolean
           site_visit_recommended: boolean
           user_id: string
           warning_level: string
         }
         Insert: {
+          area_id?: string | null
           block_approval?: boolean
           block_source?: string
+          blocking_reason?: string
           completeness_score?: number
           confidence_rollup?: string
           created_at?: string
           estimate_id: string
           estimate_version?: string
           health_check_id?: string
+          human_fix_required?: boolean
           id?: string
           mismatch_summary?: string
+          missing_scope_categories?: string
+          override_allowed?: boolean
+          override_reason_required?: boolean
           site_visit_recommended?: boolean
           user_id: string
           warning_level?: string
         }
         Update: {
+          area_id?: string | null
           block_approval?: boolean
           block_source?: string
+          blocking_reason?: string
           completeness_score?: number
           confidence_rollup?: string
           created_at?: string
           estimate_id?: string
           estimate_version?: string
           health_check_id?: string
+          human_fix_required?: boolean
           id?: string
           mismatch_summary?: string
+          missing_scope_categories?: string
+          override_allowed?: boolean
+          override_reason_required?: boolean
           site_visit_recommended?: boolean
           user_id?: string
           warning_level?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "estimate_health_checks_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_areas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "estimate_health_checks_estimate_id_fkey"
             columns: ["estimate_id"]
@@ -1318,6 +1343,8 @@ export type Database = {
           missing_info_questions: string
           overall_risk_level: string
           overhead_pct: number
+          override_reason: string
+          override_required: boolean
           photo_analysis_summary: string
           photo_count: number
           possible_hidden_risks: string
@@ -1328,6 +1355,8 @@ export type Database = {
           project_type: string
           public_notes: string
           public_pdf_url: string
+          review_block_reason: string
+          review_blocked: boolean
           revision_needed_warning: boolean
           risk_cost_high: number
           risk_cost_low: number
@@ -1422,6 +1451,8 @@ export type Database = {
           missing_info_questions?: string
           overall_risk_level?: string
           overhead_pct?: number
+          override_reason?: string
+          override_required?: boolean
           photo_analysis_summary?: string
           photo_count?: number
           possible_hidden_risks?: string
@@ -1432,6 +1463,8 @@ export type Database = {
           project_type?: string
           public_notes?: string
           public_pdf_url?: string
+          review_block_reason?: string
+          review_blocked?: boolean
           revision_needed_warning?: boolean
           risk_cost_high?: number
           risk_cost_low?: number
@@ -1526,6 +1559,8 @@ export type Database = {
           missing_info_questions?: string
           overall_risk_level?: string
           overhead_pct?: number
+          override_reason?: string
+          override_required?: boolean
           photo_analysis_summary?: string
           photo_count?: number
           possible_hidden_risks?: string
@@ -1536,6 +1571,8 @@ export type Database = {
           project_type?: string
           public_notes?: string
           public_pdf_url?: string
+          review_block_reason?: string
+          review_blocked?: boolean
           revision_needed_warning?: boolean
           risk_cost_high?: number
           risk_cost_low?: number
