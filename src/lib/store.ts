@@ -432,6 +432,24 @@ function estimateToRow(est: Estimate, userId: string) {
     volatility_reviewed: (est as any).volatility_reviewed ?? false,
     completeness_score: (est as any).completeness_score ?? 0,
     calc_status: (est as any).calc_status || 'Stale',
+    // AI Intake fields
+    ai_intake_summary: est.ai_intake_summary || '',
+    photo_analysis_summary: est.photo_analysis_summary || '',
+    visible_findings: est.visible_findings || '',
+    likely_scope_items: est.likely_scope_items || '',
+    possible_hidden_risks: est.possible_hidden_risks || '',
+    missing_info_questions: est.missing_info_questions || '',
+    suggested_allowances: est.suggested_allowances || '',
+    suggested_exclusions: est.suggested_exclusions || '',
+    suggested_assumptions: est.suggested_assumptions || '',
+    suggested_line_items: est.suggested_line_items || '',
+    ai_detected_trades: est.ai_detected_trades || '',
+    site_visit_required: est.site_visit_required ?? false,
+    ai_scope_confidence: est.ai_scope_confidence || 'Medium',
+    photo_count: est.photo_count ?? 0,
+    intake_last_updated_at: est.intake_last_updated_at || null,
+    revision_needed_warning: est.revision_needed_warning ?? false,
+    ai_apply_status: est.ai_apply_status || 'Not Applied',
   };
 }
 
