@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getEstimates, deleteEstimate, saveEstimate, nextEstimateId } from '@/lib/store';
 import type { Estimate } from '@/lib/types';
+import { PROJECT_CATEGORIES } from '@/lib/types';
 import { generatePublicPDF, generateInternalPDF } from '@/lib/pdfGenerator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
