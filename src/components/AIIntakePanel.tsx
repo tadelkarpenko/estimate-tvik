@@ -558,7 +558,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
         if (newSuggestions.length > 0) {
           await insertSuggestions(newSuggestions);
-          const updated = await getSuggestions(estimateDbId);
+          const updated = await getSuggestions(resolvedId);
           setSuggestions(updated);
         }
 
