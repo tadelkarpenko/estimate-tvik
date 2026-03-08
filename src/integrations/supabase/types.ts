@@ -19,6 +19,7 @@ export type Database = {
           applied_field: string
           approved_at: string | null
           approved_by: string
+          area_id: string | null
           audit_id: string
           confidence: string
           created_at: string
@@ -27,6 +28,7 @@ export type Database = {
           id: string
           original_suggestion: string
           source_type: string
+          suggestion_batch_id: string
           suggestion_id: string
           user_id: string
         }
@@ -34,6 +36,7 @@ export type Database = {
           applied_field?: string
           approved_at?: string | null
           approved_by?: string
+          area_id?: string | null
           audit_id?: string
           confidence?: string
           created_at?: string
@@ -42,6 +45,7 @@ export type Database = {
           id?: string
           original_suggestion?: string
           source_type?: string
+          suggestion_batch_id?: string
           suggestion_id: string
           user_id: string
         }
@@ -49,6 +53,7 @@ export type Database = {
           applied_field?: string
           approved_at?: string | null
           approved_by?: string
+          area_id?: string | null
           audit_id?: string
           confidence?: string
           created_at?: string
@@ -57,10 +62,18 @@ export type Database = {
           id?: string
           original_suggestion?: string
           source_type?: string
+          suggestion_batch_id?: string
           suggestion_id?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_applied_suggestions_audit_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_areas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ai_applied_suggestions_audit_estimate_id_fkey"
             columns: ["estimate_id"]
@@ -82,18 +95,23 @@ export type Database = {
           apply_target: string
           approved_at: string | null
           approved_by: string
+          area_id: string | null
           confidence: string
           created_at: string
           edited_value: string
           estimate_id: string
           evidence_summary: string
           id: string
+          priority_level: string
+          queue_group: string
           reason_for_suggestion: string
           rejected_at: string | null
           reviewer_notes: string
+          source_timestamp: string | null
           source_type: string
           status: string
           suggested_value: string
+          suggestion_batch_id: string
           suggestion_id: string
           suggestion_type: string
           updated_at: string
@@ -103,18 +121,23 @@ export type Database = {
           apply_target?: string
           approved_at?: string | null
           approved_by?: string
+          area_id?: string | null
           confidence?: string
           created_at?: string
           edited_value?: string
           estimate_id: string
           evidence_summary?: string
           id?: string
+          priority_level?: string
+          queue_group?: string
           reason_for_suggestion?: string
           rejected_at?: string | null
           reviewer_notes?: string
+          source_timestamp?: string | null
           source_type?: string
           status?: string
           suggested_value?: string
+          suggestion_batch_id?: string
           suggestion_id?: string
           suggestion_type?: string
           updated_at?: string
@@ -124,24 +147,36 @@ export type Database = {
           apply_target?: string
           approved_at?: string | null
           approved_by?: string
+          area_id?: string | null
           confidence?: string
           created_at?: string
           edited_value?: string
           estimate_id?: string
           evidence_summary?: string
           id?: string
+          priority_level?: string
+          queue_group?: string
           reason_for_suggestion?: string
           rejected_at?: string | null
           reviewer_notes?: string
+          source_timestamp?: string | null
           source_type?: string
           status?: string
           suggested_value?: string
+          suggestion_batch_id?: string
           suggestion_id?: string
           suggestion_type?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_suggestions_queue_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_areas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ai_suggestions_queue_estimate_id_fkey"
             columns: ["estimate_id"]
@@ -654,6 +689,101 @@ export type Database = {
         }
         Relationships: []
       }
+      estimate_areas: {
+        Row: {
+          ai_detected_trades: string
+          area_id: string
+          area_name: string
+          area_sequence: number
+          area_type: string
+          confidence: string
+          created_at: string
+          estimate_id: string
+          id: string
+          latest_ai_summary: string
+          likely_scope_items: string
+          missing_info_questions: string
+          notes_text: string
+          possible_hidden_risks: string
+          quick_tags: string
+          revision_status: string
+          site_visit_flag: boolean
+          suggested_allowances: string
+          suggested_assumptions: string
+          suggested_exclusions: string
+          updated_at: string
+          uploaded_photo_count: number
+          user_id: string
+          visible_findings: string
+          voice_transcript_cleaned: string
+          voice_transcript_raw: string
+        }
+        Insert: {
+          ai_detected_trades?: string
+          area_id?: string
+          area_name?: string
+          area_sequence?: number
+          area_type?: string
+          confidence?: string
+          created_at?: string
+          estimate_id: string
+          id?: string
+          latest_ai_summary?: string
+          likely_scope_items?: string
+          missing_info_questions?: string
+          notes_text?: string
+          possible_hidden_risks?: string
+          quick_tags?: string
+          revision_status?: string
+          site_visit_flag?: boolean
+          suggested_allowances?: string
+          suggested_assumptions?: string
+          suggested_exclusions?: string
+          updated_at?: string
+          uploaded_photo_count?: number
+          user_id: string
+          visible_findings?: string
+          voice_transcript_cleaned?: string
+          voice_transcript_raw?: string
+        }
+        Update: {
+          ai_detected_trades?: string
+          area_id?: string
+          area_name?: string
+          area_sequence?: number
+          area_type?: string
+          confidence?: string
+          created_at?: string
+          estimate_id?: string
+          id?: string
+          latest_ai_summary?: string
+          likely_scope_items?: string
+          missing_info_questions?: string
+          notes_text?: string
+          possible_hidden_risks?: string
+          quick_tags?: string
+          revision_status?: string
+          site_visit_flag?: boolean
+          suggested_allowances?: string
+          suggested_assumptions?: string
+          suggested_exclusions?: string
+          updated_at?: string
+          uploaded_photo_count?: number
+          user_id?: string
+          visible_findings?: string
+          voice_transcript_cleaned?: string
+          voice_transcript_raw?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_areas_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_chat_messages: {
         Row: {
           content: string
@@ -972,11 +1102,16 @@ export type Database = {
         Row: {
           ai_apply_status: string
           ai_detected_trades: string
+          ai_estimate_health_status: string
+          ai_estimate_rollup_summary: string
           ai_intake_summary: string
+          ai_pending_suggestions_count: number
           ai_price_audit_summary: string
+          ai_revision_review_status: string
           ai_scope: string
           ai_scope_confidence: string
           ai_suggestions_last_json: string
+          area_count: number
           assumptions_rich: string
           calc_status: string
           city: string
@@ -990,7 +1125,9 @@ export type Database = {
           created_at: string
           created_by: string
           crew_size: number
+          estimate_confidence_rollup: string
           estimate_id: string
+          estimate_site_visit_recommended: boolean
           estimated_duration_days: number
           finish_level: string
           finish_materials_included: boolean
@@ -1054,11 +1191,16 @@ export type Database = {
         Insert: {
           ai_apply_status?: string
           ai_detected_trades?: string
+          ai_estimate_health_status?: string
+          ai_estimate_rollup_summary?: string
           ai_intake_summary?: string
+          ai_pending_suggestions_count?: number
           ai_price_audit_summary?: string
+          ai_revision_review_status?: string
           ai_scope?: string
           ai_scope_confidence?: string
           ai_suggestions_last_json?: string
+          area_count?: number
           assumptions_rich?: string
           calc_status?: string
           city?: string
@@ -1072,7 +1214,9 @@ export type Database = {
           created_at?: string
           created_by?: string
           crew_size?: number
+          estimate_confidence_rollup?: string
           estimate_id: string
+          estimate_site_visit_recommended?: boolean
           estimated_duration_days?: number
           finish_level?: string
           finish_materials_included?: boolean
@@ -1136,11 +1280,16 @@ export type Database = {
         Update: {
           ai_apply_status?: string
           ai_detected_trades?: string
+          ai_estimate_health_status?: string
+          ai_estimate_rollup_summary?: string
           ai_intake_summary?: string
+          ai_pending_suggestions_count?: number
           ai_price_audit_summary?: string
+          ai_revision_review_status?: string
           ai_scope?: string
           ai_scope_confidence?: string
           ai_suggestions_last_json?: string
+          area_count?: number
           assumptions_rich?: string
           calc_status?: string
           city?: string
@@ -1154,7 +1303,9 @@ export type Database = {
           created_at?: string
           created_by?: string
           crew_size?: number
+          estimate_confidence_rollup?: string
           estimate_id?: string
+          estimate_site_visit_recommended?: boolean
           estimated_duration_days?: number
           finish_level?: string
           finish_materials_included?: boolean

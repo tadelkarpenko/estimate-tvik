@@ -406,6 +406,14 @@ function rowToEstimate(r: any): Estimate {
     voice_detected_rooms: r.voice_detected_rooms || '',
     voice_detected_material_preferences: r.voice_detected_material_preferences || '',
     voice_last_updated_at: r.voice_last_updated_at || null,
+    // Rollup fields
+    area_count: Number(r.area_count ?? 0),
+    ai_pending_suggestions_count: Number(r.ai_pending_suggestions_count ?? 0),
+    ai_estimate_health_status: r.ai_estimate_health_status || 'Good',
+    ai_estimate_rollup_summary: r.ai_estimate_rollup_summary || '',
+    ai_revision_review_status: r.ai_revision_review_status || 'No Review Needed',
+    estimate_site_visit_recommended: r.estimate_site_visit_recommended ?? false,
+    estimate_confidence_rollup: r.estimate_confidence_rollup || 'Medium',
   } as Estimate;
 }
 
@@ -466,6 +474,14 @@ function estimateToRow(est: Estimate, userId: string) {
     voice_detected_rooms: est.voice_detected_rooms || '',
     voice_detected_material_preferences: est.voice_detected_material_preferences || '',
     voice_last_updated_at: est.voice_last_updated_at || null,
+    // Rollup fields
+    area_count: est.area_count ?? 0,
+    ai_pending_suggestions_count: est.ai_pending_suggestions_count ?? 0,
+    ai_estimate_health_status: est.ai_estimate_health_status || 'Good',
+    ai_estimate_rollup_summary: est.ai_estimate_rollup_summary || '',
+    ai_revision_review_status: est.ai_revision_review_status || 'No Review Needed',
+    estimate_site_visit_recommended: est.estimate_site_visit_recommended ?? false,
+    estimate_confidence_rollup: est.estimate_confidence_rollup || 'Medium',
   };
 }
 
