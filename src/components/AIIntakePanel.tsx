@@ -354,7 +354,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         const batchId = crypto.randomUUID();
         const queueItems = structured.review_queue_items.map((item: any) => ({
           suggestion_id: crypto.randomUUID(),
-          estimate_id: estimateDbId,
+          estimate_id: dbId,
           source_type: 'text' as SuggestionSourceType,
           suggestion_type: item.suggestion_type || 'internal_note',
           confidence: item.confidence || 'Medium',
@@ -372,10 +372,10 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
           queue_group: 'Initial Intake',
           source_timestamp: new Date().toISOString(),
-          idempotency_key: `initial-${estimateDbId}-${crypto.randomUUID().slice(0, 8)}`,
+          idempotency_key: `initial-${dbId}-${crypto.randomUUID().slice(0, 8)}`,
         }));
         await insertSuggestions(queueItems);
-        const updated = await getSuggestions(estimateDbId);
+        const updated = await getSuggestions(dbId);
         setSuggestions(updated);
       }
 
