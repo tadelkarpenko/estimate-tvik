@@ -197,7 +197,7 @@ export async function runPostWriteRecheck(
   let queueItemsCreated = 0;
   if (unresolvedIssues.length > 0) {
     const batchId = crypto.randomUUID();
-    const newSuggestions: Omit<AISuggestion, 'id' | 'created_at' | 'updated_at'>[] = unresolvedIssues.map(issue => ({
+    const newSuggestions: any[] = unresolvedIssues.map(issue => ({
       estimate_id: input.estimate_id,
       user_id: userId,
       suggestion_type: issue.type as any,
