@@ -28,6 +28,7 @@ import {
   computeEstimateRollup, AREA_TYPES, QUICK_TAGS_EXTENDED,
   type EstimateArea, type AreaType, type EstimateRollup,
 } from '@/lib/areaStore';
+import { saveHealthCheck } from '@/lib/healthCheckStore';
 import { useToast } from '@/hooks/use-toast';
 
 interface IntakeFindings {
@@ -118,6 +119,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const [mergeAnalysisResult, setMergeAnalysisResult] = useState<any>(null);
   const [missingInfoLoading, setMissingInfoLoading] = useState(false);
   const [missingInfoResult, setMissingInfoResult] = useState<any>(null);
+  const [completenessLoading, setCompletenessLoading] = useState(false);
+  const [completenessResult, setCompletenessResult] = useState<any>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   // Rollup
   const [rollup, setRollup] = useState<EstimateRollup | null>(null);
@@ -907,7 +911,138 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [estimateDbId, selectedArea, estimate, isApproved, toast]);
 
-  // ─── Send Suggestions to Queue ───
+  // ─── Completeness Check (Patch 8) ───
+  const runCompletenessCheck = useCallback(async () => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+
+    setCompletenessLoading(true);
+    const batchId = crypto.randomUUID();
+
+    try {
+      // Aggregate merged data across all areas
+      const mergedScopeSummary = areas.map(a => a.merged_scope_summary).filter(Boolean).join('\n\n');
+      const mergedVisibleFacts = areas.map(a => a.merged_visible_facts).filter(Boolean).join('\n\n');
+      const mergedInferences = areas.map(a => a.merged_inferences).filter(Boolean).join('\n\n');
+      const mergedNeedsVerification = areas.map(a => a.merged_needs_verification).filter(Boolean).join('\n\n');
+      const mergedRisks = areas.map(a => a.merged_risks).filter(Boolean).join('\n\n');
+      const mergedTradeDetection = areas.map(a => a.merged_trade_detection).filter(Boolean).join(', ');
+      const lowestConfidence = areas.reduce((worst, a) => {
+        const c = a.merged_confidence || a.confidence || 'Medium';
+        if (c === 'Low') return 'Low';
+        if (c === 'Medium' && worst !== 'Low') return 'Medium';
+        return worst;
+      }, 'High' as string);
+
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'completeness_check',
+          data: {
+            area_name: areas.length === 1 ? areas[0].area_name : `${areas.length} areas`,
+            project_type: estimate.project_type || '',
+            project_category: estimate.project_category || '',
+            current_status: estimate.status || 'Draft',
+            current_confidence: lowestConfidence,
+            merged_scope_summary: mergedScopeSummary || 'Not available',
+            merged_visible_facts: mergedVisibleFacts || 'Not available',
+            merged_inferences: mergedInferences || 'Not available',
+            merged_needs_verification: mergedNeedsVerification || 'Not available',
+            merged_risks: mergedRisks || 'Not available',
+            merged_trade_detection: mergedTradeDetection || 'Not available',
+            current_line_items: estimate.suggested_line_items || '',
+            current_exclusions: estimate.suggested_exclusions || '',
+            current_allowances: estimate.suggested_allowances || '',
+            current_assumptions: estimate.suggested_assumptions || '',
+            current_risk_notes: estimate.possible_hidden_risks || '',
+            current_site_visit_recommended: estimate.estimate_site_visit_recommended || false,
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setCompletenessResult(structured);
+
+      // Save health check record
+      await saveHealthCheck({
+        health_check_id: crypto.randomUUID(),
+        estimate_id: estimateDbId,
+        estimate_version: estimate.version || 'v1.0',
+        block_source: 'completeness_check',
+        warning_level: structured.warning_level || 'Low',
+        block_approval: structured.block_approval ?? false,
+        blocking_reason: structured.blocking_reason || '',
+        human_fix_required: structured.human_fix_required ?? false,
+        override_allowed: structured.override_allowed ?? true,
+        override_reason_required: structured.override_reason_required ?? false,
+        completeness_score: structured.completeness_score ?? 0,
+        missing_scope_categories: JSON.stringify(structured.missing_scope_categories || []),
+        mismatch_summary: JSON.stringify(structured.mismatches || []),
+        site_visit_recommended: structured.site_visit_recommended ?? false,
+        confidence_rollup: structured.confidence_rollup || 'Medium',
+      });
+
+      // Update estimate-level control fields (not protected content)
+      if (!isApproved) {
+        const controlUpdates: Partial<Estimate> = {
+          ai_estimate_health_status: structured.warning_level === 'High' ? 'High Risk' : structured.warning_level === 'Medium' ? 'Review Needed' : 'Good',
+          estimate_completeness_summary: structured.completeness_summary || '',
+          estimate_site_visit_recommended: structured.site_visit_recommended ?? false,
+          estimate_confidence_rollup: structured.confidence_rollup || 'Medium',
+          completeness_score: structured.completeness_score ?? 0,
+        } as any;
+        onUpdate(controlUpdates);
+      }
+
+      // Create queue items for material issues
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const newSuggestions = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          source_type: 'merged' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'internal_note',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Completeness Check AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || '',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'completeness_check',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: 'Completeness Check',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `cc-${estimateDbId}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(newSuggestions);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Completeness check complete', description: `Score: ${structured.completeness_score}%. Warning: ${structured.warning_level}. ${structured.block_approval ? 'REVIEW BLOCKED' : 'No block'}` });
+    } catch (e: any) {
+      toast({ title: 'Completeness check failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setCompletenessLoading(false);
+    }
+  }, [estimateDbId, areas, estimate, isApproved, toast, onUpdate]);
+
+
   const sendSuggestionsToQueue = async () => {
     if (!areaFindings || !estimateDbId || !selectedArea) {
       toast({ title: 'Run analysis first', variant: 'destructive' });
@@ -1153,13 +1288,14 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-4 mt-2 grid grid-cols-8 h-8">
+        <TabsList className="mx-4 mt-2 grid grid-cols-9 h-8">
           <TabsTrigger value="initial" className="text-[10px] px-1">Intake</TabsTrigger>
           <TabsTrigger value="areas" className="text-[10px] px-1">Areas</TabsTrigger>
           <TabsTrigger value="capture" className="text-[10px] px-1">Capture</TabsTrigger>
           <TabsTrigger value="photos" className="text-[10px] px-1">Photos</TabsTrigger>
           <TabsTrigger value="merge" className="text-[10px] px-1">Merge</TabsTrigger>
           <TabsTrigger value="questions" className="text-[10px] px-1">Questions</TabsTrigger>
+          <TabsTrigger value="check" className="text-[10px] px-1">Check</TabsTrigger>
           <TabsTrigger value="queue" className="text-[10px] px-1">Queue {pendingCount > 0 && `(${pendingCount})`}</TabsTrigger>
           <TabsTrigger value="summary" className="text-[10px] px-1">Summary</TabsTrigger>
         </TabsList>
@@ -2251,6 +2387,191 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                     <FindingSection content={selectedArea.missing_info_questions} />
                   </CardContent>
                 </Card>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ═══ COMPLETENESS CHECK TAB (Patch 8) ═══ */}
+        <TabsContent value="check" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {/* Action Button */}
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={completenessLoading || areas.length === 0}
+                onClick={runCompletenessCheck}
+              >
+                {completenessLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Running Check…</> : <><Shield className="h-3.5 w-3.5 mr-1.5" /> Run Completeness Check</>}
+              </Button>
+
+              {areas.length === 0 && (
+                <Card><CardContent className="px-3 py-3"><p className="text-xs text-muted-foreground">Add areas and run intake analysis before checking completeness.</p></CardContent></Card>
+              )}
+
+              {/* Results */}
+              {completenessResult && (
+                <div className="space-y-3">
+                  {/* Score + Warning */}
+                  <Card>
+                    <CardContent className="px-3 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground">Completeness:</span>
+                          <span className="text-lg font-bold">{completenessResult.completeness_score}%</span>
+                        </div>
+                        <Badge variant={
+                          completenessResult.warning_level === 'High' ? 'destructive' :
+                          completenessResult.warning_level === 'Medium' ? 'secondary' : 'default'
+                        } className="text-xs">
+                          {completenessResult.warning_level} Warning
+                        </Badge>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            completenessResult.completeness_score >= 80 ? 'bg-emerald-500' :
+                            completenessResult.completeness_score >= 60 ? 'bg-amber-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(completenessResult.completeness_score, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs text-muted-foreground">Confidence:</span>
+                        {confidenceBadge(completenessResult.confidence_rollup || 'Medium')}
+                        {completenessResult.site_visit_recommended && (
+                          <Badge variant="destructive" className="text-[10px]"><MapPin className="h-2.5 w-2.5 mr-0.5" /> Site Visit</Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Summary */}
+                  {completenessResult.completeness_summary && (
+                    <Card><CardContent className="px-3 py-2"><p className="text-xs text-muted-foreground">{completenessResult.completeness_summary}</p></CardContent></Card>
+                  )}
+
+                  {/* BLOCKING REASON - must be prominent */}
+                  {completenessResult.block_approval && (
+                    <Card className="border-red-500 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><AlertTriangle className="h-3.5 w-3.5" /> Review Blocked</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        <p className="text-xs font-medium">{completenessResult.blocking_reason}</p>
+                        {completenessResult.human_fix_required && (
+                          <Badge variant="destructive" className="text-[10px]">Human Fix Required</Badge>
+                        )}
+                        {completenessResult.override_allowed && (
+                          <div className="space-y-1.5 pt-1 border-t border-red-200">
+                            <p className="text-[10px] text-muted-foreground">Override is available. {completenessResult.override_reason_required ? 'A typed reason is required.' : ''}</p>
+                            {completenessResult.override_reason_required && (
+                              <Textarea
+                                value={overrideReason}
+                                onChange={e => setOverrideReason(e.target.value)}
+                                placeholder="Type override reason…"
+                                className="text-xs min-h-[40px]"
+                              />
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-7 border-red-300 text-red-700 hover:bg-red-50"
+                              disabled={completenessResult.override_reason_required && !overrideReason.trim()}
+                              onClick={() => {
+                                onUpdate({
+                                  override_reason: overrideReason || 'Manual override',
+                                } as any);
+                                toast({ title: 'Override applied', description: 'Review block overridden. Reason recorded.' });
+                              }}
+                            >
+                              Override Block
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Missing Scope Categories */}
+                  {completenessResult.missing_scope_categories?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><FileQuestion className="h-3.5 w-3.5" /> Missing Scope Categories ({completenessResult.missing_scope_categories.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        {completenessResult.missing_scope_categories.map((cat: any, i: number) => (
+                          <div key={i} className="border-l-2 border-primary/30 pl-2.5 space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-medium">{cat.category}</p>
+                              <Badge variant={cat.severity === 'High' ? 'destructive' : cat.severity === 'Medium' ? 'secondary' : 'outline'} className="text-[9px]">{cat.severity}</Badge>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">{cat.reason}</p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Mismatches */}
+                  {completenessResult.mismatches?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Evidence Mismatches ({completenessResult.mismatches.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2">
+                        {completenessResult.mismatches.map((m: any, i: number) => (
+                          <div key={i} className="border-l-2 border-amber-400 pl-2.5 space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant={m.severity === 'High' ? 'destructive' : m.severity === 'Medium' ? 'secondary' : 'outline'} className="text-[9px]">{m.severity}</Badge>
+                            </div>
+                            <p className="text-xs"><strong>Evidence:</strong> {m.finding}</p>
+                            <p className="text-xs text-muted-foreground"><strong>Gap:</strong> {m.estimate_gap}</p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Site Visit */}
+                  {completenessResult.site_visit_recommended && completenessResult.site_visit_reason && (
+                    <Card className="border-red-500/50 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><MapPin className="h-3.5 w-3.5" /> Site Visit Recommended</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs">{completenessResult.site_visit_reason}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Queue preview */}
+                  {completenessResult.review_queue_items?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs">Queued Suggestions ({completenessResult.review_queue_items.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-1">
+                        {completenessResult.review_queue_items.slice(0, 5).map((item: any, i: number) => (
+                          <div key={i} className="text-xs flex items-center gap-1.5">
+                            <Badge variant="outline" className="text-[9px]">{item.suggestion_type}</Badge>
+                            <span className="truncate">{item.suggested_value || item.reason_for_suggestion}</span>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* No block - all clear */}
+                  {!completenessResult.block_approval && completenessResult.completeness_score >= 80 && (
+                    <Card className="border-emerald-300 bg-emerald-50">
+                      <CardContent className="px-3 py-3">
+                        <p className="text-xs flex items-center gap-1.5 text-emerald-800"><CheckCircle className="h-3.5 w-3.5" /> Estimate appears ready for review. No material gaps or blocks detected.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
               )}
             </div>
           </ScrollArea>

@@ -15,11 +15,17 @@ export interface EstimateHealthCheck {
   health_check_id: string;
   estimate_id: string;
   user_id?: string;
+  area_id?: string | null;
   estimate_version: string;
   block_source: BlockSource;
   warning_level: WarningLevel;
   block_approval: boolean;
+  blocking_reason: string;
+  human_fix_required: boolean;
+  override_allowed: boolean;
+  override_reason_required: boolean;
   completeness_score: number;
+  missing_scope_categories: string;
   mismatch_summary: string;
   site_visit_recommended: boolean;
   confidence_rollup: ConfidenceRollup;
@@ -53,11 +59,17 @@ function rowToHealthCheck(r: any): EstimateHealthCheck {
     health_check_id: r.health_check_id || '',
     estimate_id: r.estimate_id,
     user_id: r.user_id,
+    area_id: r.area_id || null,
     estimate_version: r.estimate_version || '',
     block_source: (r.block_source || 'completeness_check') as BlockSource,
     warning_level: (r.warning_level || 'Low') as WarningLevel,
     block_approval: r.block_approval ?? false,
+    blocking_reason: r.blocking_reason || '',
+    human_fix_required: r.human_fix_required ?? false,
+    override_allowed: r.override_allowed ?? true,
+    override_reason_required: r.override_reason_required ?? false,
     completeness_score: Number(r.completeness_score || 0),
+    missing_scope_categories: r.missing_scope_categories || '',
     mismatch_summary: r.mismatch_summary || '',
     site_visit_recommended: r.site_visit_recommended ?? false,
     confidence_rollup: (r.confidence_rollup || 'Medium') as ConfidenceRollup,
