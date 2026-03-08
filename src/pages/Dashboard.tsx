@@ -71,7 +71,8 @@ export default function Dashboard() {
   ];
 
   // Action Queue
-  const openAudits = audits.filter(a => a.status === 'Open');
+  const existingEstIds = new Set(estimates.map(e => e.estimate_id));
+  const openAudits = audits.filter(a => a.status === 'Open' && existingEstIds.has(a.estimate_id));
   const staleRows = costLib.filter(r => now - new Date(r.last_updated).getTime() > 120 * 86400000);
   const actions: ActionItem[] = [];
 
