@@ -118,7 +118,7 @@ export default function EstimatesList() {
                   <TableCell className="font-mono text-sm">{e.estimate_id}</TableCell>
                   <TableCell className="font-medium">{e.project_name || '—'}</TableCell>
                   <TableCell>{e.client_name || '—'}</TableCell>
-                  <TableCell><Badge variant="secondary">{e.project_type}</Badge></TableCell>
+                  <TableCell><Badge variant="secondary">{e.project_category || e.project_type}</Badge></TableCell>
                   <TableCell>{e.city}</TableCell>
                   <TableCell><Badge variant={e.status === 'Accepted' ? 'default' : 'secondary'}>{e.status}</Badge></TableCell>
                   <TableCell className="text-right text-sm">{e.total_low > 0 ? `${fmt(e.total_low)}–${fmt(e.total_high)}` : '—'}</TableCell>
