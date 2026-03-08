@@ -911,7 +911,138 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     }
   }, [estimateDbId, selectedArea, estimate, isApproved, toast]);
 
-  // ─── Send Suggestions to Queue ───
+  // ─── Completeness Check (Patch 8) ───
+  const runCompletenessCheck = useCallback(async () => {
+    if (!estimateDbId) {
+      toast({ title: 'Save estimate first', variant: 'destructive' });
+      return;
+    }
+
+    setCompletenessLoading(true);
+    const batchId = crypto.randomUUID();
+
+    try {
+      // Aggregate merged data across all areas
+      const mergedScopeSummary = areas.map(a => a.merged_scope_summary).filter(Boolean).join('\n\n');
+      const mergedVisibleFacts = areas.map(a => a.merged_visible_facts).filter(Boolean).join('\n\n');
+      const mergedInferences = areas.map(a => a.merged_inferences).filter(Boolean).join('\n\n');
+      const mergedNeedsVerification = areas.map(a => a.merged_needs_verification).filter(Boolean).join('\n\n');
+      const mergedRisks = areas.map(a => a.merged_risks).filter(Boolean).join('\n\n');
+      const mergedTradeDetection = areas.map(a => a.merged_trade_detection).filter(Boolean).join(', ');
+      const lowestConfidence = areas.reduce((worst, a) => {
+        const c = a.merged_confidence || a.confidence || 'Medium';
+        if (c === 'Low') return 'Low';
+        if (c === 'Medium' && worst !== 'Low') return 'Medium';
+        return worst;
+      }, 'High' as string);
+
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'completeness_check',
+          data: {
+            area_name: areas.length === 1 ? areas[0].area_name : `${areas.length} areas`,
+            project_type: estimate.project_type || '',
+            project_category: estimate.project_category || '',
+            current_status: estimate.status || 'Draft',
+            current_confidence: lowestConfidence,
+            merged_scope_summary: mergedScopeSummary || 'Not available',
+            merged_visible_facts: mergedVisibleFacts || 'Not available',
+            merged_inferences: mergedInferences || 'Not available',
+            merged_needs_verification: mergedNeedsVerification || 'Not available',
+            merged_risks: mergedRisks || 'Not available',
+            merged_trade_detection: mergedTradeDetection || 'Not available',
+            current_line_items: estimate.suggested_line_items || '',
+            current_exclusions: estimate.suggested_exclusions || '',
+            current_allowances: estimate.suggested_allowances || '',
+            current_assumptions: estimate.suggested_assumptions || '',
+            current_risk_notes: estimate.possible_hidden_risks || '',
+            current_site_visit_recommended: estimate.estimate_site_visit_recommended || false,
+          },
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const { structured } = await resp.json();
+      setCompletenessResult(structured);
+
+      // Save health check record
+      await saveHealthCheck({
+        health_check_id: crypto.randomUUID(),
+        estimate_id: estimateDbId,
+        estimate_version: estimate.version || 'v1.0',
+        block_source: 'completeness_check',
+        warning_level: structured.warning_level || 'Low',
+        block_approval: structured.block_approval ?? false,
+        blocking_reason: structured.blocking_reason || '',
+        human_fix_required: structured.human_fix_required ?? false,
+        override_allowed: structured.override_allowed ?? true,
+        override_reason_required: structured.override_reason_required ?? false,
+        completeness_score: structured.completeness_score ?? 0,
+        missing_scope_categories: JSON.stringify(structured.missing_scope_categories || []),
+        mismatch_summary: JSON.stringify(structured.mismatches || []),
+        site_visit_recommended: structured.site_visit_recommended ?? false,
+        confidence_rollup: structured.confidence_rollup || 'Medium',
+      });
+
+      // Update estimate-level control fields (not protected content)
+      if (!isApproved) {
+        const controlUpdates: Partial<Estimate> = {
+          ai_estimate_health_status: structured.warning_level === 'High' ? 'High Risk' : structured.warning_level === 'Medium' ? 'Review Needed' : 'Good',
+          estimate_completeness_summary: structured.completeness_summary || '',
+          estimate_site_visit_recommended: structured.site_visit_recommended ?? false,
+          estimate_confidence_rollup: structured.confidence_rollup || 'Medium',
+          completeness_score: structured.completeness_score ?? 0,
+        } as any;
+        onUpdate(controlUpdates);
+      }
+
+      // Create queue items for material issues
+      if (structured.review_queue_items?.length > 0 && !isApproved) {
+        const newSuggestions = structured.review_queue_items.map((item: any) => ({
+          suggestion_id: crypto.randomUUID(),
+          estimate_id: estimateDbId,
+          source_type: 'merged' as SuggestionSourceType,
+          suggestion_type: item.suggestion_type || 'internal_note',
+          confidence: item.confidence || 'Medium',
+          evidence_summary: item.evidence_summary || '',
+          reason_for_suggestion: item.reason_for_suggestion || 'Completeness Check AI',
+          suggested_value: item.suggested_value || '',
+          apply_target: item.apply_target || '',
+          status: 'pending',
+          decision_state: 'pending',
+          reviewer_notes: '',
+          approved_by: '',
+          edited_value: '',
+          suggestion_batch_id: batchId,
+          block_name: 'completeness_check',
+          priority_level: item.confidence === 'Low' ? 'High' : 'Medium',
+          queue_group: 'Completeness Check',
+          source_timestamp: new Date().toISOString(),
+          idempotency_key: `cc-${estimateDbId}-${crypto.randomUUID().slice(0, 8)}`,
+        }));
+        await insertSuggestions(newSuggestions);
+        const updated = await getSuggestions(estimateDbId);
+        setSuggestions(updated);
+      }
+
+      toast({ title: 'Completeness check complete', description: `Score: ${structured.completeness_score}%. Warning: ${structured.warning_level}. ${structured.block_approval ? 'REVIEW BLOCKED' : 'No block'}` });
+    } catch (e: any) {
+      toast({ title: 'Completeness check failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setCompletenessLoading(false);
+    }
+  }, [estimateDbId, areas, estimate, isApproved, toast, onUpdate]);
+
+
   const sendSuggestionsToQueue = async () => {
     if (!areaFindings || !estimateDbId || !selectedArea) {
       toast({ title: 'Run analysis first', variant: 'destructive' });
