@@ -170,7 +170,7 @@ export default function MobileFieldCapture() {
           <Button variant="outline" size="sm" className="h-8"
             onClick={captureLocation} disabled={geoStatus === 'capturing'}>
             {geoStatus === 'capturing' ? <Loader2 className="h-3 w-3 animate-spin" /> :
-             geoStatus === 'done' ? <CheckCircle className="h-3 w-3 text-green-600" /> :
+             geoStatus === 'done' ? <CheckCircle className="h-3 w-3 text-primary" /> :
              <Navigation className="h-3 w-3" />}
             <span className="ml-1.5 text-xs">{geoStatus === 'done' ? 'Recapture' : 'Capture'}</span>
           </Button>
