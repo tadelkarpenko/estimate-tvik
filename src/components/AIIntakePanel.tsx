@@ -2134,6 +2134,128 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           </ScrollArea>
         </TabsContent>
 
+        {/* ═══ QUESTIONS TAB (Patch 7) ═══ */}
+        <TabsContent value="questions" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-3">
+              {/* Current state summary */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Confidence: </span>
+                <Badge variant={
+                  (selectedArea?.merged_confidence || selectedArea?.confidence) === 'High' ? 'default' :
+                  (selectedArea?.merged_confidence || selectedArea?.confidence) === 'Low' ? 'destructive' : 'secondary'
+                } className="text-[10px]">
+                  {selectedArea?.merged_confidence || selectedArea?.confidence || 'Unknown'}
+                </Badge>
+                {selectedArea?.site_visit_flag && (
+                  <Badge variant="destructive" className="text-[10px]"><MapPin className="h-2.5 w-2.5 mr-0.5" /> Site Visit</Badge>
+                )}
+              </div>
+
+              {/* Action */}
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={missingInfoLoading || !selectedArea}
+                onClick={generateMissingInfoQuestions}
+              >
+                {missingInfoLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Generating…</> : <><HelpCircle className="h-3.5 w-3.5 mr-1.5" /> Generate Missing Info Questions</>}
+              </Button>
+
+              {/* Results */}
+              {missingInfoResult && (
+                <div className="space-y-3">
+                  {/* Completeness note */}
+                  {missingInfoResult.overall_completeness_note && (
+                    <Card>
+                      <CardContent className="px-3 py-2">
+                        <p className="text-xs text-muted-foreground">{missingInfoResult.overall_completeness_note}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Block warning */}
+                  {missingInfoResult.block_if_unanswered && (
+                    <Card className="border-red-500/50 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><AlertTriangle className="h-3.5 w-3.5" /> Blocks Approval If Unanswered</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs">{missingInfoResult.block_reason}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Questions list */}
+                  {missingInfoResult.top_priority_questions?.length > 0 ? (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5" /> Top Priority Questions ({missingInfoResult.top_priority_questions.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-3">
+                        {missingInfoResult.top_priority_questions.map((q: any, i: number) => (
+                          <div key={i} className="border-l-2 border-primary/30 pl-2.5 space-y-0.5">
+                            <p className="text-xs font-medium">{q.priority_rank}. {q.question}</p>
+                            <p className="text-[10px] text-muted-foreground">{q.why_it_matters}</p>
+                            <Badge variant="outline" className="text-[9px]">{q.impact_area}</Badge>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardContent className="px-3 py-3">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5 text-green-600" /> No high-priority questions remain. Intake appears sufficiently complete.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Site visit recommendation */}
+                  {missingInfoResult.site_visit_recommended && (
+                    <Card className="border-red-500/50 bg-red-500/5">
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs flex items-center gap-1.5 text-red-700"><MapPin className="h-3.5 w-3.5" /> Site Visit Recommended</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <p className="text-xs">{missingInfoResult.site_visit_reason || 'Missing information materially affects estimate reliability.'}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Queue preview */}
+                  {missingInfoResult.review_queue_items?.length > 0 && (
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-xs">Queued Suggestions ({missingInfoResult.review_queue_items.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-1">
+                        {missingInfoResult.review_queue_items.slice(0, 5).map((item: any, i: number) => (
+                          <div key={i} className="text-xs flex items-center gap-1.5">
+                            <Badge variant="outline" className="text-[9px]">{item.suggestion_type}</Badge>
+                            <span className="truncate">{item.suggested_value || item.reason_for_suggestion}</span>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Show existing questions if no fresh result */}
+              {!missingInfoResult && selectedArea?.missing_info_questions && (
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5" /> Previous Questions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3">
+                    <FindingSection content={selectedArea.missing_info_questions} />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         {/* ═══ REVIEW QUEUE TAB ═══ */}
         <TabsContent value="queue" className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
