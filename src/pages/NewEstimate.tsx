@@ -38,7 +38,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ChevronDown, Copy, FileDown, Send, CheckCircle, XCircle, Plus, Trash2, ImagePlus, MessageSquare, Lock, Unlock, AlertTriangle, Camera, Sparkles, Briefcase, ShieldCheck, Gauge, Clock, Target, HardHat, ClipboardList } from 'lucide-react';
 import { MediaUploader } from '@/components/MediaUploader';
 import { fitEstimateToBudget, type BudgetFitScenario } from '@/lib/budgetFitEngine';
@@ -144,7 +143,7 @@ export default function NewEstimate() {
     qty: 0, labor_unit_cost: 0, material_unit_cost: 0, labor_hours_per_unit: 0, notes: '',
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [mobileAiOpen, setMobileAiOpen] = useState(false);
   const isEdit = !!id;
 
   useEffect(() => {
@@ -752,8 +751,26 @@ export default function NewEstimate() {
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
+  const aiPanelContent = (
+    <AIIntakePanel
+      estimate={form}
+      estimateDbId={estimateDbId}
+      media={media}
+      onUpdate={update}
+      onSave={saveDraft}
+      onMediaChange={async () => {
+        if (estimateDbId) {
+          const med = await getEstimateMedia(estimateDbId);
+          setMedia(med);
+        }
+      }}
+    />
+  );
+
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="flex flex-col lg:flex-row gap-6 max-w-[1600px]">
+      {/* Left: Estimate Form */}
+      <div className="flex-1 min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{isEdit ? `Edit ${form.estimate_id}` : 'New Estimate'}</h1>
         {form.estimate_id && <Badge>{form.status}</Badge>}
@@ -891,8 +908,8 @@ export default function NewEstimate() {
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={saveDraft}>Save Draft</Button>
         <Button onClick={generate} disabled={generating}>{generating ? 'Generating...' : 'Generate'}</Button>
-        <Button variant="outline" onClick={() => setIntakeOpen(true)} className="border-primary/30">
-          <ClipboardList className="mr-1 h-4 w-4" />AI Intake Assistant
+        <Button variant="outline" onClick={() => setMobileAiOpen(!mobileAiOpen)} className="border-primary/30 lg:hidden">
+          <ClipboardList className="mr-1 h-4 w-4" />{mobileAiOpen ? 'Hide AI' : 'AI Intake'}
         </Button>
         {form.subtotal! > 0 && (
           <>
@@ -1533,24 +1550,21 @@ export default function NewEstimate() {
         </DialogContent>
       </Dialog>
 
-      {/* AI Intake Assistant Sheet */}
-      <Sheet open={intakeOpen} onOpenChange={setIntakeOpen}>
-        <SheetContent side="right" className="w-full sm:w-[420px] md:w-[480px] p-0">
-          <AIIntakePanel
-            estimate={form}
-            estimateDbId={estimateDbId}
-            media={media}
-            onUpdate={update}
-            onSave={saveDraft}
-            onMediaChange={async () => {
-              if (estimateDbId) {
-                const med = await getEstimateMedia(estimateDbId);
-                setMedia(med);
-              }
-            }}
-          />
-        </SheetContent>
-      </Sheet>
+      {/* Mobile AI Panel (collapsible) */}
+      {mobileAiOpen && (
+        <div className="lg:hidden">
+          {aiPanelContent}
+        </div>
+      )}
+
+      </div>{/* end left column */}
+
+      {/* Right: AI Intake Panel - persistent on desktop */}
+      <div className="hidden lg:block w-[420px] shrink-0">
+        <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-border bg-card">
+          {aiPanelContent}
+        </div>
+      </div>
     </div>
   );
 }
