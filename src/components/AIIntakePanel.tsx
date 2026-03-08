@@ -2891,19 +2891,67 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                     </Card>
 
                     {/* Execute button */}
-                    {writePlan.apply_status === 'staged' && (
+                    {writePlan.apply_status === 'staged' && !executionResult && (
                       <Button
                         size="sm"
                         className="w-full"
                         variant="gold"
                         disabled={writePlanLoading}
-                        onClick={executeWritePlan}
+                        onClick={executeWritePlanControlled}
                       >
-                        {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Applying…</> : <><CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Execute Write Plan</>}
+                        {writePlanLoading ? <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Executing…</> : <><CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Execute Write Plan</>}
                       </Button>
                     )}
 
-                    {writePlan.apply_status === 'applied' && (
+                    {/* Execution Result Display (Patch 10) */}
+                    {executionResult && (
+                      <Card className={
+                        executionResult.execution_status === 'success' ? 'border-emerald-300 bg-emerald-50' :
+                        executionResult.execution_status === 'partial_success' ? 'border-amber-300 bg-amber-50' :
+                        executionResult.execution_status === 'blocked' ? 'border-orange-300 bg-orange-50' :
+                        'border-destructive bg-destructive/10'
+                      }>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-xs flex items-center gap-1.5">
+                            {executionResult.execution_status === 'success' && <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />}
+                            {executionResult.execution_status === 'partial_success' && <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+                            {executionResult.execution_status === 'blocked' && <Shield className="h-3.5 w-3.5 text-orange-600" />}
+                            {executionResult.execution_status === 'failed' && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
+                            Execution: {executionResult.execution_status.replace('_', ' ')}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3 space-y-2">
+                          <p className="text-xs">{executionResult.summary}</p>
+                          <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                            <div>Version check: <Badge variant={executionResult.version_check_passed ? 'outline' : 'destructive'} className="text-[9px]">{executionResult.version_check_passed ? 'Passed' : 'Failed'}</Badge></div>
+                            <div>Idempotency: <Badge variant={executionResult.idempotency_check_passed ? 'outline' : 'destructive'} className="text-[9px]">{executionResult.idempotency_check_passed ? 'Passed' : 'Failed'}</Badge></div>
+                            <div>Fields applied: <strong>{executionResult.applied_fields.filter(f => f.result === 'applied').length}</strong></div>
+                            <div>Fields skipped: <strong>{executionResult.applied_fields.filter(f => f.result === 'skipped_duplicate').length}</strong></div>
+                            <div>Line items: <strong>{executionResult.applied_line_items.filter(l => l.result === 'applied').length}</strong></div>
+                            <div>Audit entries: <strong>{executionResult.created_audit_entries.length}</strong></div>
+                            <div>Reapproval: <Badge variant={executionResult.requires_reapproval_applied ? 'default' : 'outline'} className="text-[9px]">{executionResult.requires_reapproval_applied ? 'Yes' : 'No'}</Badge></div>
+                          </div>
+                          {executionResult.status_updates.length > 0 && (
+                            <div className="text-[10px] space-y-0.5">
+                              <p className="font-medium">Status changes:</p>
+                              {executionResult.status_updates.map((su, i) => (
+                                <p key={i}>{su.field}: {su.old_value} → {su.new_value}</p>
+                              ))}
+                            </div>
+                          )}
+                          {executionResult.errors.length > 0 && (
+                            <div className="text-[10px] text-destructive space-y-0.5">
+                              <p className="font-medium">Errors:</p>
+                              {executionResult.errors.map((err, i) => (
+                                <p key={i}>• {err}</p>
+                              ))}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {writePlan.apply_status === 'applied' && !executionResult && (
                       <Card className="border-emerald-300 bg-emerald-50">
                         <CardContent className="px-3 py-3">
                           <p className="text-xs flex items-center gap-1.5 text-emerald-800">
