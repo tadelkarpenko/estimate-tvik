@@ -20,6 +20,8 @@ export const AREA_TYPES: AreaType[] = [
   'Exterior Front', 'Exterior Rear', 'Roof', 'Mechanical Room', 'Other',
 ];
 
+export type MergeAnalysisStatus = 'Not Run' | 'Ready' | 'Complete' | 'Failed';
+
 export interface EstimateArea {
   id?: string;
   area_id: string;
@@ -56,6 +58,19 @@ export interface EstimateArea {
   site_visit_reason: string;
   revision_status: RevisionStatus;
   latest_ai_summary: string;
+  // Patch 6: Merge fields
+  merged_scope_summary: string;
+  merged_visible_facts: string;
+  merged_inferences: string;
+  merged_needs_verification: string;
+  merged_risks: string;
+  merged_trade_detection: string;
+  merged_missing_questions: string;
+  merged_confidence: string;
+  merged_last_updated_at: string | null;
+  merged_analysis_status: MergeAnalysisStatus;
+  latest_merge_batch_id: string;
+  conflict_summary: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -116,6 +131,18 @@ export const saveEstimateArea = async (area: EstimateArea): Promise<string> => {
     site_visit_reason: area.site_visit_reason,
     revision_status: area.revision_status,
     latest_ai_summary: area.latest_ai_summary,
+    merged_scope_summary: area.merged_scope_summary,
+    merged_visible_facts: area.merged_visible_facts,
+    merged_inferences: area.merged_inferences,
+    merged_needs_verification: area.merged_needs_verification,
+    merged_risks: area.merged_risks,
+    merged_trade_detection: area.merged_trade_detection,
+    merged_missing_questions: area.merged_missing_questions,
+    merged_confidence: area.merged_confidence,
+    merged_last_updated_at: area.merged_last_updated_at,
+    merged_analysis_status: area.merged_analysis_status,
+    latest_merge_batch_id: area.latest_merge_batch_id,
+    conflict_summary: area.conflict_summary,
     updated_at: new Date().toISOString(),
   };
 
@@ -169,6 +196,18 @@ export const createDefaultArea = (estimateDbId: string, areaType: AreaType, sequ
   site_visit_reason: '',
   revision_status: 'Original',
   latest_ai_summary: '',
+  merged_scope_summary: '',
+  merged_visible_facts: '',
+  merged_inferences: '',
+  merged_needs_verification: '',
+  merged_risks: '',
+  merged_trade_detection: '',
+  merged_missing_questions: '',
+  merged_confidence: '',
+  merged_last_updated_at: null,
+  merged_analysis_status: 'Not Run',
+  latest_merge_batch_id: '',
+  conflict_summary: '',
 });
 
 // ─── Rollup Logic ───
@@ -264,6 +303,18 @@ function rowToArea(r: any): EstimateArea {
     site_visit_reason: r.site_visit_reason || '',
     revision_status: (r.revision_status || 'Original') as RevisionStatus,
     latest_ai_summary: r.latest_ai_summary || '',
+    merged_scope_summary: r.merged_scope_summary || '',
+    merged_visible_facts: r.merged_visible_facts || '',
+    merged_inferences: r.merged_inferences || '',
+    merged_needs_verification: r.merged_needs_verification || '',
+    merged_risks: r.merged_risks || '',
+    merged_trade_detection: r.merged_trade_detection || '',
+    merged_missing_questions: r.merged_missing_questions || '',
+    merged_confidence: r.merged_confidence || '',
+    merged_last_updated_at: r.merged_last_updated_at || null,
+    merged_analysis_status: (r.merged_analysis_status || 'Not Run') as MergeAnalysisStatus,
+    latest_merge_batch_id: r.latest_merge_batch_id || '',
+    conflict_summary: r.conflict_summary || '',
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
