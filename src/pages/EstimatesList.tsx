@@ -88,7 +88,7 @@ export default function EstimatesList() {
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <Badge variant={e.status === 'Accepted' ? 'default' : 'secondary'} className="text-xs">{e.status}</Badge>
-                  <Badge variant="secondary" className="text-xs">{e.project_type}</Badge>
+                  <Badge variant="secondary" className="text-xs">{e.project_category || e.project_type}</Badge>
                 </div>
               </div>
               <div className="flex gap-1 mt-2" onClick={ev => ev.stopPropagation()}>
