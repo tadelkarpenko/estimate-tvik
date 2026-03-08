@@ -9,6 +9,9 @@ const getUserId = async () => {
 export type AreaType = 'Kitchen' | 'Bathroom' | 'Basement' | 'Exterior Front' | 'Exterior Rear' | 'Roof' | 'Mechanical Room' | 'Bedroom' | 'Hallway' | 'Garage' | 'Utility' | 'Crawlspace' | 'Living Room' | 'Dining Room' | 'Laundry' | 'Other';
 export type RevisionStatus = 'Original' | 'Updated' | 'Needs Review';
 export type AIConfidence = 'High' | 'Medium' | 'Low';
+export type VoiceCaptureStatus = 'Not Started' | 'Recording' | 'Paused' | 'Captured' | 'Transcribed' | 'Failed';
+export type VoiceAnalysisStatus = 'Not Run' | 'Ready' | 'Complete' | 'Failed';
+export type VoiceTranscriptSource = '' | 'recorded' | 'pasted' | 'imported';
 
 export const AREA_TYPES: AreaType[] = [
   'Kitchen', 'Bathroom', 'Basement', 'Bedroom', 'Living Room', 'Dining Room',
@@ -27,6 +30,11 @@ export interface EstimateArea {
   notes_text: string;
   voice_transcript_raw: string;
   voice_transcript_cleaned: string;
+  voice_transcript_source: VoiceTranscriptSource;
+  voice_last_updated_at: string | null;
+  voice_capture_status: VoiceCaptureStatus;
+  voice_analysis_status: VoiceAnalysisStatus;
+  latest_voice_batch_id: string;
   uploaded_photo_count: number;
   quick_tags: string;
   visible_findings: string;
@@ -38,7 +46,9 @@ export interface EstimateArea {
   suggested_assumptions: string;
   missing_info_questions: string;
   confidence: AIConfidence;
+  low_confidence_warning: boolean;
   site_visit_flag: boolean;
+  site_visit_reason: string;
   revision_status: RevisionStatus;
   latest_ai_summary: string;
   created_at?: string;
@@ -76,6 +86,11 @@ export const saveEstimateArea = async (area: EstimateArea): Promise<string> => {
     notes_text: area.notes_text,
     voice_transcript_raw: area.voice_transcript_raw,
     voice_transcript_cleaned: area.voice_transcript_cleaned,
+    voice_transcript_source: area.voice_transcript_source,
+    voice_last_updated_at: area.voice_last_updated_at,
+    voice_capture_status: area.voice_capture_status,
+    voice_analysis_status: area.voice_analysis_status,
+    latest_voice_batch_id: area.latest_voice_batch_id,
     uploaded_photo_count: area.uploaded_photo_count,
     quick_tags: area.quick_tags,
     visible_findings: area.visible_findings,
@@ -87,7 +102,9 @@ export const saveEstimateArea = async (area: EstimateArea): Promise<string> => {
     suggested_assumptions: area.suggested_assumptions,
     missing_info_questions: area.missing_info_questions,
     confidence: area.confidence,
+    low_confidence_warning: area.low_confidence_warning,
     site_visit_flag: area.site_visit_flag,
+    site_visit_reason: area.site_visit_reason,
     revision_status: area.revision_status,
     latest_ai_summary: area.latest_ai_summary,
     updated_at: new Date().toISOString(),
@@ -118,6 +135,11 @@ export const createDefaultArea = (estimateDbId: string, areaType: AreaType, sequ
   notes_text: '',
   voice_transcript_raw: '',
   voice_transcript_cleaned: '',
+  voice_transcript_source: '',
+  voice_last_updated_at: null,
+  voice_capture_status: 'Not Started',
+  voice_analysis_status: 'Not Run',
+  latest_voice_batch_id: '',
   uploaded_photo_count: 0,
   quick_tags: '',
   visible_findings: '',
@@ -129,7 +151,9 @@ export const createDefaultArea = (estimateDbId: string, areaType: AreaType, sequ
   suggested_assumptions: '',
   missing_info_questions: '',
   confidence: 'Medium',
+  low_confidence_warning: false,
   site_visit_flag: false,
+  site_visit_reason: '',
   revision_status: 'Original',
   latest_ai_summary: '',
 });
@@ -202,6 +226,11 @@ function rowToArea(r: any): EstimateArea {
     notes_text: r.notes_text || '',
     voice_transcript_raw: r.voice_transcript_raw || '',
     voice_transcript_cleaned: r.voice_transcript_cleaned || '',
+    voice_transcript_source: (r.voice_transcript_source || '') as VoiceTranscriptSource,
+    voice_last_updated_at: r.voice_last_updated_at || null,
+    voice_capture_status: (r.voice_capture_status || 'Not Started') as VoiceCaptureStatus,
+    voice_analysis_status: (r.voice_analysis_status || 'Not Run') as VoiceAnalysisStatus,
+    latest_voice_batch_id: r.latest_voice_batch_id || '',
     uploaded_photo_count: Number(r.uploaded_photo_count || 0),
     quick_tags: r.quick_tags || '',
     visible_findings: r.visible_findings || '',
@@ -213,7 +242,9 @@ function rowToArea(r: any): EstimateArea {
     suggested_assumptions: r.suggested_assumptions || '',
     missing_info_questions: r.missing_info_questions || '',
     confidence: (r.confidence || 'Medium') as AIConfidence,
+    low_confidence_warning: r.low_confidence_warning ?? false,
     site_visit_flag: r.site_visit_flag ?? false,
+    site_visit_reason: r.site_visit_reason || '',
     revision_status: (r.revision_status || 'Original') as RevisionStatus,
     latest_ai_summary: r.latest_ai_summary || '',
     created_at: r.created_at,
