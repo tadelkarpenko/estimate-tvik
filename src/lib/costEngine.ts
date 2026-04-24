@@ -1,4 +1,5 @@
 import type { CostLibraryItem, EstimateLineItem, CostStructureItem, ProjectType, FinishLevel, Phase, LineItemUnit } from './types';
+import { normalizePhase } from './types';
 
 const FINISH_MULTIPLIERS: Record<FinishLevel, number> = {
   Basic: 1.00, Mid: 1.15, High: 1.30, Luxury: 1.55,
@@ -29,6 +30,22 @@ function mapPhase(crewTrade: string): Phase {
     HVAC: 'HVAC', General: 'Other', Exterior: 'Other', Roofing: 'Other',
   };
   return map[crewTrade] || 'Other';
+}
+
+/**
+ * Resolve the canonical Phase for a CostLibrary row.
+ * Many seeded rows have crew_trade='General' but a meaningful `trade` label
+ * (e.g. "Framing", "Drywall", "Paint Labor"). We prefer:
+ *   1. crew_trade when it maps to a non-Other phase
+ *   2. normalizePhase(trade) — handles labels like "Paint Labor", "Tile Labor"
+ *   3. normalizePhase(description) as last-resort
+ */
+function resolvePhase(row: { crew_trade?: string | null; trade?: string | null; description?: string | null }): Phase {
+  const fromCrew = mapPhase(row.crew_trade || 'General');
+  if (fromCrew !== 'Other') return fromCrew;
+  const fromTrade = normalizePhase(row.trade || '');
+  if (fromTrade !== 'Other') return fromTrade;
+  return normalizePhase(row.description || '');
 }
 
 /**
@@ -117,7 +134,7 @@ export function runCostEngine(input: CostInput): CostResult {
     lineItems.push({
       line_id: `CL-${row.id}`,
       estimate_id: input.estimate_db_id,
-      phase: mapPhase(row.crew_trade || 'General'),
+      phase: resolvePhase(row),
       description: row.trade,
       unit: mapUnit(row.qty_rule),
       qty,
