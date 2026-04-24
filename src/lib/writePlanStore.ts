@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { normalizePhase } from './types';
 
 const getUserId = async () => {
   const { data: { user } } = await supabase.auth.getUser();
@@ -103,7 +104,10 @@ export function generateWritePlan(
         lineItems.push({
           action: 'add',
           description: value,
-          phase: target || null,
+          // Normalize free-text apply_target ("framing", "Drywall finish", etc.)
+          // and fall back to deriving phase from the description so AI-added
+          // items land in the correct phase bucket instead of "Other".
+          phase: normalizePhase(target || value || ''),
           unit: null,
           qty: null,
           labor_unit_cost: null,
