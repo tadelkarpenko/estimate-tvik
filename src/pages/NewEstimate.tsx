@@ -7,7 +7,7 @@ import type {
   SuggestedChanges, SuggestedAction, AIConfidence, Phase, LineItemUnit,
   ProjectCategory, ScopeClass, JobComplexity,
 } from '@/lib/types';
-import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, categoryToLegacyType } from '@/lib/types';
+import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, categoryToLegacyType, normalizePhase } from '@/lib/types';
 import type { Contract, PaymentMilestone } from '@/lib/contractTypes';
 import { PAYMENT_TEMPLATES } from '@/lib/contractTypes';
 import {
@@ -619,7 +619,7 @@ export default function NewEstimate() {
           newItems.push({
             line_id: `AI-${uid()}`,
             estimate_id: estimateDbId,
-            phase: 'Other',
+            phase: normalizePhase((action as any).phase || (action as any).trade || action.description || ''),
             description: isAllowance ? `Allowance: ${action.description}` : action.description,
             unit: isAllowance ? 'lump_sum' : (action.unit || 'ea'),
             qty,
@@ -645,7 +645,7 @@ export default function NewEstimate() {
           newItems.push({
             line_id: `AI-${uid()}`,
             estimate_id: estimateDbId,
-            phase: 'Other',
+            phase: normalizePhase((action as any).phase || (action as any).trade || action.description || ''),
             description: `[Proposed Change] ${action.description}`,
             unit: action.unit || 'ea',
             qty: action.qty || 0,
