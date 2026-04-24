@@ -4,8 +4,10 @@ import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { AppSidebar } from './AppSidebar';
 import { FloatingAIWidget } from './FloatingAIWidget';
+import { useSwipeBack } from '@/hooks/useSwipeBack';
 
 export function AppLayout() {
+  useSwipeBack();
   return (
     <SidebarProvider>
       <div className="flex min-h-[100dvh] w-full">
