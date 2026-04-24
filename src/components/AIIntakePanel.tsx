@@ -1427,9 +1427,9 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
   const currentAreaTags = selectedArea?.quick_tags ? selectedArea.quick_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b bg-muted/30">
+      <div className="border-b bg-muted/30 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
