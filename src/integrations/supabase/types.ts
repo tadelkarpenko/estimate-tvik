@@ -1472,6 +1472,7 @@ export type Database = {
           fixture_count: number
           hours_per_day: number
           id: string
+          included_trades: string[] | null
           intake_last_updated_at: string | null
           internal_notes: string
           internal_pdf_url: string
@@ -1580,6 +1581,7 @@ export type Database = {
           fixture_count?: number
           hours_per_day?: number
           id?: string
+          included_trades?: string[] | null
           intake_last_updated_at?: string | null
           internal_notes?: string
           internal_pdf_url?: string
@@ -1688,6 +1690,7 @@ export type Database = {
           fixture_count?: number
           hours_per_day?: number
           id?: string
+          included_trades?: string[] | null
           intake_last_updated_at?: string | null
           internal_notes?: string
           internal_pdf_url?: string

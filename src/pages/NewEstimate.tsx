@@ -7,7 +7,7 @@ import type {
   SuggestedChanges, SuggestedAction, AIConfidence, Phase, LineItemUnit,
   ProjectCategory, ScopeClass, JobComplexity,
 } from '@/lib/types';
-import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, categoryToLegacyType, normalizePhase } from '@/lib/types';
+import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, PHASE_LIST, categoryToLegacyType, normalizePhase } from '@/lib/types';
 import type { Contract, PaymentMilestone } from '@/lib/contractTypes';
 import { PAYMENT_TEMPLATES } from '@/lib/contractTypes';
 import {
@@ -238,6 +238,9 @@ export default function NewEstimate() {
         finish_materials_included: form.finish_materials_included!,
         costLibrary: costLib, estimate_db_id: dbId,
         crew_size: form.crew_size || 2, hours_per_day: form.hours_per_day || 8,
+        included_trades: (form as any).included_trades && (form as any).included_trades.length > 0
+          ? (form as any).included_trades
+          : null,
       });
 
       await upsertEstimateLineItems(costResult.line_items);
@@ -852,6 +855,84 @@ export default function NewEstimate() {
             <div className="flex items-center gap-2">
               <Switch checked={form.finish_materials_included} onCheckedChange={v => update({ finish_materials_included: v })} />
               <Label>Finish Materials Included</Label>
+            </div>
+
+            {/* Trades to Include — scope filter for cost engine */}
+            <div className="border-t pt-3 mt-1">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-semibold">Trades to Include</Label>
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" size="sm" className="h-6 text-xs"
+                    onClick={() => update({ included_trades: null } as any)}>
+                    All trades
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" className="h-6 text-xs"
+                    onClick={() => update({ included_trades: [] } as any)}>
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              {(() => {
+                const aiText = [
+                  (form as any).ai_detected_trades || '',
+                  (form as any).merged_trade_detection || '',
+                  (form as any).ai_intake_summary || '',
+                ].join(' ').toLowerCase();
+                const aiSuggested = PHASE_LIST.filter(p => aiText.includes(p.toLowerCase()));
+                const current: string[] = (form as any).included_trades ?? [];
+                const isAllMode = (form as any).included_trades == null;
+                const showAIBanner = aiSuggested.length > 0 && aiSuggested.length < PHASE_LIST.length && isAllMode;
+                return (
+                  <>
+                    {showAIBanner && (
+                      <div className="mb-2 p-2 rounded border border-amber-300 bg-amber-50 text-xs flex items-start gap-2">
+                        <Sparkles className="h-3.5 w-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-amber-900">
+                            <strong>AI suggests narrowing scope</strong> — intake mentions: {aiSuggested.join(', ')}
+                          </p>
+                          <Button type="button" variant="link" size="sm" className="h-auto p-0 text-amber-700 text-xs"
+                            onClick={() => update({ included_trades: aiSuggested } as any)}>
+                            Apply AI scope →
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {PHASE_LIST.map(phase => {
+                        const checked = isAllMode || current.includes(phase);
+                        return (
+                          <button
+                            key={phase}
+                            type="button"
+                            onClick={() => {
+                              const base = isAllMode ? [...PHASE_LIST] : [...current];
+                              const next = base.includes(phase)
+                                ? base.filter(p => p !== phase)
+                                : [...base, phase];
+                              update({ included_trades: next } as any);
+                            }}
+                            className={`px-2.5 py-1 rounded-full text-xs border transition ${
+                              checked
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                            }`}
+                          >
+                            {phase}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      {isAllMode
+                        ? 'Default: all trades included. Click chips to narrow scope before Generate.'
+                        : current.length === 0
+                          ? '⚠ No trades selected — Generate will produce no cost-library lines.'
+                          : `${current.length} of ${PHASE_LIST.length} trades selected. Generate will only emit these phases.`}
+                    </p>
+                  </>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
