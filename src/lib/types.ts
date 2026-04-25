@@ -166,6 +166,8 @@ export interface Estimate {
   estimate_site_visit_recommended: boolean;
   estimate_confidence_rollup: AIConfidence;
   estimate_completeness_summary: string;
+  /** Optional scope filter — when non-empty, cost engine only emits CostLibrary lines whose resolved phase is in this list. Null/empty = all default trades (legacy behavior). */
+  included_trades?: Phase[] | null;
 }
 
 export interface CostLibraryItem {

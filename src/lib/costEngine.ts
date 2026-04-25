@@ -73,6 +73,8 @@ interface CostInput {
   estimate_db_id: string;
   crew_size: number;
   hours_per_day: number;
+  /** Optional scope filter. If provided AND non-empty, only CostLibrary rows whose resolved phase is in this list are emitted. If omitted/empty → full default kit (legacy behavior). */
+  included_trades?: Phase[] | null;
 }
 
 export interface CostResult {
@@ -97,8 +99,12 @@ export interface CostResult {
  * - Risk totals deterministic and risk_level rollup correct
  */
 export function runCostEngine(input: CostInput): CostResult {
+  const tradeFilter = (input.included_trades && input.included_trades.length > 0)
+    ? new Set<Phase>(input.included_trades)
+    : null;
   const rows = input.costLibrary.filter(
     r => r.project_type === input.project_type && r.default_included && (r.active !== false)
+      && (tradeFilter === null || tradeFilter.has(resolvePhase(r)))
   );
   const finishMult = FINISH_MULTIPLIERS[input.finish_level];
   const lineItems: EstimateLineItem[] = [];
