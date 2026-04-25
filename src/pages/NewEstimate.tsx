@@ -7,7 +7,7 @@ import type {
   SuggestedChanges, SuggestedAction, AIConfidence, Phase, LineItemUnit,
   ProjectCategory, ScopeClass, JobComplexity,
 } from '@/lib/types';
-import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, categoryToLegacyType, normalizePhase } from '@/lib/types';
+import { PROJECT_CATEGORIES, SCOPE_CLASSES, JOB_COMPLEXITIES, PHASE_LIST, categoryToLegacyType, normalizePhase } from '@/lib/types';
 import type { Contract, PaymentMilestone } from '@/lib/contractTypes';
 import { PAYMENT_TEMPLATES } from '@/lib/contractTypes';
 import {
@@ -238,6 +238,9 @@ export default function NewEstimate() {
         finish_materials_included: form.finish_materials_included!,
         costLibrary: costLib, estimate_db_id: dbId,
         crew_size: form.crew_size || 2, hours_per_day: form.hours_per_day || 8,
+        included_trades: (form as any).included_trades && (form as any).included_trades.length > 0
+          ? (form as any).included_trades
+          : null,
       });
 
       await upsertEstimateLineItems(costResult.line_items);
