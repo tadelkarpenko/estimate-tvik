@@ -1,0 +1,1 @@
+UPDATE public.estimates SET ai_intake_summary='Client wants framing only — relocating one stud wall, no other trades involved.', ai_detected_trades='Framing' WHERE estimate_id='EST-0015';
