@@ -777,20 +777,22 @@ export default function NewEstimate() {
       {/* Form Fields */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader><CardTitle className="text-base">Project Classification</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Project Classification</CardTitle>
+          </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label className="font-semibold">Project Category *</Label>
-              <p className="text-xs text-muted-foreground mb-1">High-level project type</p>
-              <Select value={form.project_category || 'Custom Scope'} onValueChange={v => update({ project_category: v as ProjectCategory })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PROJECT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              {errors.project_category && <p className="text-xs text-destructive mt-1">{errors.project_category}</p>}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <Label className="font-semibold">Project Category *</Label>
+                <p className="text-xs text-muted-foreground mb-1">High-level project type</p>
+                <Select value={form.project_category || 'Custom Scope'} onValueChange={v => update({ project_category: v as ProjectCategory })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {errors.project_category && <p className="text-xs text-destructive mt-1">{errors.project_category}</p>}
+              </div>
               <div>
                 <Label className="font-semibold">Scope Class</Label>
                 <p className="text-xs text-muted-foreground mb-1">Internal estimating logic</p>
@@ -803,7 +805,7 @@ export default function NewEstimate() {
               </div>
               <div>
                 <Label className="font-semibold">Job Size / Complexity</Label>
-                <p className="text-xs text-muted-foreground mb-1">Expected scope scale</p>
+                <p className="text-xs text-muted-foreground mb-1">Expected scope scale and estimating difficulty</p>
                 <Select value={form.job_complexity || 'Standard Scope'} onValueChange={v => update({ job_complexity: v as JobComplexity })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -811,6 +813,9 @@ export default function NewEstimate() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="pt-2 border-t">
+              <h2 className="text-sm font-semibold">Project Details</h2>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
