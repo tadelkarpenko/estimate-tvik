@@ -1,0 +1,1 @@
+ALTER TABLE public.estimates ADD COLUMN IF NOT EXISTS included_trades text[];
