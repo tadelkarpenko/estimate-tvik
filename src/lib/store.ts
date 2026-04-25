@@ -420,6 +420,7 @@ function rowToEstimate(r: any): Estimate {
     estimate_site_visit_recommended: r.estimate_site_visit_recommended ?? false,
     estimate_confidence_rollup: r.estimate_confidence_rollup || 'Medium',
     estimate_completeness_summary: r.estimate_completeness_summary || '',
+    included_trades: Array.isArray(r.included_trades) ? r.included_trades : null,
   } as Estimate;
 }
 
@@ -492,6 +493,7 @@ function estimateToRow(est: Estimate, userId: string) {
     estimate_site_visit_recommended: est.estimate_site_visit_recommended ?? false,
     estimate_confidence_rollup: est.estimate_confidence_rollup || 'Medium',
     estimate_completeness_summary: est.estimate_completeness_summary || '',
+    included_trades: (est as any).included_trades && (est as any).included_trades.length > 0 ? (est as any).included_trades : null,
   };
 }
 
