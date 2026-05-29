@@ -5,6 +5,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const stringField = (value: unknown, fallback = "Unknown") =>
+  typeof value === "string" && value.trim() ? value : fallback;
+
+const formatProjectClassification = (data: Record<string, unknown>) => [
+  `Project type: ${stringField(data.project_type)}`,
+  `Project category: ${stringField(data.project_category)}`,
+  `Scope class: ${stringField(data.scope_class)}`,
+  `Job size / complexity: ${stringField(data.job_complexity)}`,
+  data.project_classification_summary
+    ? `Classification summary: ${stringField(data.project_classification_summary)}`
+    : "",
+].filter(Boolean).join("\n");
+
 const CHAT_SYSTEM_PROMPT = `You are TVIK LLC Estimator Assistant.
 
 Rules:
@@ -282,7 +295,7 @@ RULES:
 
     } else if (action === "initial_intake") {
       // Patch 3: Estimate-level Initial Intake — structured extraction via tool calling
-      const userPrompt = `Project type: ${data.project_type || 'Unknown'}
+      const userPrompt = `${formatProjectClassification(data)}
 Description: ${data.typed_description || data.description || 'None provided'}
 Customer goal: ${data.customer_goal || 'Not specified'}
 Urgency: ${data.urgency || 'Not specified'}
@@ -456,7 +469,7 @@ Call the extract_photo_analysis function with the structured output.`;
         type: "text",
         text: `Analyze these ${imageUrls.length} construction photo(s).
 Area: ${data.area_name || 'Unknown'} (${data.area_type || 'Unknown'})
-Project type: ${data.project_type || 'Unknown'}
+${formatProjectClassification(data)}
 Quick tags: ${data.quick_tags || 'None'}
 Existing notes: ${data.notes || 'None'}
 Photo captions: ${data.captions || 'None'}`
@@ -586,7 +599,7 @@ Call the extract_merge_analysis function with the structured output.`;
       const mergeUserPrompt = `Merge the following upstream structured outputs into one reconciled estimate picture.
 
 Area: ${data.area_name || 'Unknown'} (${data.area_type || 'Unknown'})
-Project type: ${data.project_type || 'Unknown'}
+${formatProjectClassification(data)}
 Current status: ${data.current_status || 'Draft'}
 Quick tags: ${data.quick_tags || 'None'}
 
@@ -732,7 +745,7 @@ Call the extract_missing_info_questions function with the structured output.`;
       const missingInfoUserPrompt = `Analyze the current structured intake state and produce the highest-value clarification questions.
 
 Area: ${data.area_name || 'Unknown'} (${data.area_type || 'Unknown'})
-Project type: ${data.project_type || 'Unknown'}
+${formatProjectClassification(data)}
 Current status: ${data.current_status || 'Draft'}
 Current confidence: ${data.current_confidence || 'Unknown'}
 
@@ -917,8 +930,7 @@ Call the extract_completeness_check function with the structured output.`;
       const completenessUserPrompt = `Compare the current structured intake findings against the estimate content and produce a completeness control result.
 
 Area: ${data.area_name || 'All areas'}
-Project type: ${data.project_type || 'Unknown'}
-Project category: ${data.project_category || 'Unknown'}
+${formatProjectClassification(data)}
 Current status: ${data.current_status || 'Draft'}
 Current confidence: ${data.current_confidence || 'Unknown'}
 
@@ -1083,7 +1095,7 @@ Evaluate completeness, identify gaps and mismatches, assign warning level, and d
       const workflow = data.workflow || "intake_fresh";
       const userPrompt = `Workflow mode: ${workflow}
 
-Project type: ${data.project_type || 'Unknown'}
+${formatProjectClassification(data)}
 Description: ${data.description || 'None provided'}
 Notes: ${data.notes || 'None'}
 Square footage: ${data.sqft || 'Unknown'}

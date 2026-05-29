@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -110,6 +110,23 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
       return null;
     }
   }, [estimateDbId, onSave, toast]);
+  const projectClassificationContext = useMemo(() => {
+    const projectCategory = estimate.project_category || '';
+    const scopeClass = estimate.scope_class || '';
+    const jobComplexity = estimate.job_complexity || '';
+
+    return {
+      project_type: estimate.project_type || '',
+      project_category: projectCategory,
+      scope_class: scopeClass,
+      job_complexity: jobComplexity,
+      project_classification_summary: [
+        projectCategory ? `Project Category: ${projectCategory}` : '',
+        scopeClass ? `Scope Class: ${scopeClass}` : '',
+        jobComplexity ? `Job Size / Complexity: ${jobComplexity}` : '',
+      ].filter(Boolean).join('; '),
+    };
+  }, [estimate.project_type, estimate.project_category, estimate.scope_class, estimate.job_complexity]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('initial');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['summary', 'findings', 'questions']));
@@ -314,7 +331,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
         body: JSON.stringify({
           action: 'initial_intake',
           data: {
-            project_type: estimate.project_type || '',
+            ...projectClassificationContext,
             typed_description: description,
             customer_goal: initialIntakeGoal.trim() || '',
             urgency: initialIntakeUrgency.trim() || '',
@@ -385,7 +402,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setInitialIntakeLoading(false);
     }
-  }, [ensureSaved, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate]);
+  }, [ensureSaved, initialIntakeDesc, initialIntakeGoal, initialIntakeUrgency, estimate, isApproved, toast, onUpdate, projectClassificationContext]);
 
   // ─── Area-Level AI Analysis ───
   const analyzeArea = useCallback(async () => {
@@ -421,7 +438,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           action: 'intake',
           data: {
             workflow,
-            project_type: estimate.project_type || '',
+            ...projectClassificationContext,
             description: `Area: ${selectedArea.area_name} (${selectedArea.area_type})`,
             notes: selectedArea.notes_text || '',
             sqft: estimate.sqft || 0,
@@ -574,7 +591,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setLoading(false);
     }
-  }, [selectedArea, estimateDbId, estimate, media, isApproved, toast, onUpdate]);
+  }, [selectedArea, estimateDbId, estimate, media, isApproved, toast, onUpdate, projectClassificationContext]);
 
   // ─── Photo Analysis (Patch 5) ───
   const analyzePhotos = useCallback(async () => {
@@ -606,7 +623,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
             image_urls: imageUrls.slice(0, 8),
             area_name: selectedArea?.area_name || '',
             area_type: selectedArea?.area_type || '',
-            project_type: estimate.project_type || '',
+            ...projectClassificationContext,
             quick_tags: selectedArea?.quick_tags || '',
             notes: selectedArea?.notes_text || '',
             captions,
@@ -694,7 +711,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setPhotoAnalysisLoading(false);
     }
-  }, [estimateDbId, selectedArea, media, estimate, isApproved, toast, onUpdate]);
+  }, [estimateDbId, selectedArea, media, estimate, isApproved, toast, onUpdate, projectClassificationContext]);
 
 
   // ─── Merge Analysis (Patch 6) ───
@@ -735,7 +752,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           data: {
             area_name: selectedArea.area_name || '',
             area_type: selectedArea.area_type || '',
-            project_type: estimate.project_type || '',
+            ...projectClassificationContext,
             current_status: estimate.status || 'Draft',
             quick_tags: selectedArea.quick_tags || '',
             typed_intake_output: typedOutput || 'Not available',
@@ -819,7 +836,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMergeAnalysisLoading(false);
     }
-  }, [ensureSaved, selectedArea, estimate, isApproved, toast, onUpdate]);
+  }, [ensureSaved, selectedArea, estimate, isApproved, toast, onUpdate, projectClassificationContext]);
 
   // ─── Missing Info Questions (Patch 7) ───
   const generateMissingInfoQuestions = useCallback(async () => {
@@ -848,7 +865,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           data: {
             area_name: selectedArea.area_name || '',
             area_type: selectedArea.area_type || '',
-            project_type: estimate.project_type || '',
+            ...projectClassificationContext,
             current_status: estimate.status || 'Draft',
             current_confidence: selectedArea.merged_confidence || selectedArea.confidence || 'Medium',
             merged_scope_summary: selectedArea.merged_scope_summary || '',
@@ -928,7 +945,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setMissingInfoLoading(false);
     }
-  }, [ensureSaved, selectedArea, estimate, isApproved, toast]);
+  }, [ensureSaved, selectedArea, estimate, isApproved, toast, projectClassificationContext]);
 
   // ─── Completeness Check (Patch 8) ───
   const runCompletenessCheck = useCallback(async () => {
@@ -963,8 +980,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
           action: 'completeness_check',
           data: {
             area_name: areas.length === 1 ? areas[0].area_name : `${areas.length} areas`,
-            project_type: estimate.project_type || '',
-            project_category: estimate.project_category || '',
+            ...projectClassificationContext,
             current_status: estimate.status || 'Draft',
             current_confidence: lowestConfidence,
             merged_scope_summary: mergedScopeSummary || 'Not available',
@@ -1057,7 +1073,7 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
     } finally {
       setCompletenessLoading(false);
     }
-  }, [ensureSaved, areas, estimate, isApproved, toast, onUpdate]);
+  }, [ensureSaved, areas, estimate, isApproved, toast, onUpdate, projectClassificationContext]);
 
 
   const sendSuggestionsToQueue = async () => {
@@ -1510,9 +1526,12 @@ export function AIIntakePanel({ estimate, estimateDbId, media, onUpdate, onSave,
                     </div>
                   </div>
                   {/* Context from estimate */}
-                  {(estimate.project_type || estimate.sqft) && (
+                  {(estimate.project_category || estimate.scope_class || estimate.job_complexity || estimate.project_type || estimate.sqft) && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
-                      {estimate.project_type && <Badge variant="outline" className="text-xs">{estimate.project_type}</Badge>}
+                      {estimate.project_category && <Badge variant="outline" className="text-xs">Category: {estimate.project_category}</Badge>}
+                      {estimate.scope_class && <Badge variant="outline" className="text-xs">Scope: {estimate.scope_class}</Badge>}
+                      {estimate.job_complexity && <Badge variant="outline" className="text-xs">Complexity: {estimate.job_complexity}</Badge>}
+                      {!estimate.project_category && estimate.project_type && <Badge variant="outline" className="text-xs">Legacy: {estimate.project_type}</Badge>}
                       {estimate.sqft ? <Badge variant="outline" className="text-xs">{estimate.sqft} sqft</Badge> : null}
                       {estimate.finish_level && <Badge variant="outline" className="text-xs">{estimate.finish_level}</Badge>}
                     </div>
