@@ -8,9 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, CheckCircle, Clock, FileText, Gauge, Plus, RotateCcw, Target, TrendingDown, TrendingUp, Zap, Camera, ArrowRight } from 'lucide-react';
+import { ClipboardList, FileText, Plus, Smartphone, Target, TrendingUp, Zap, ArrowRight } from 'lucide-react';
 
 type Severity = 'Critical' | 'High' | 'Medium' | 'Low';
 
@@ -121,6 +119,16 @@ export default function Dashboard() {
     s === 'Critical' ? 'destructive' : s === 'High' ? 'destructive' : s === 'Medium' ? 'secondary' : 'outline';
   const actionLabel = (t: string) =>
     t === 'Fix' ? 'Fix' : t === 'Recompute' ? 'Recompute' : t === 'Analyze' ? 'Analyze' : t === 'Review CostLib' ? 'Review' : 'Review';
+  const draftCount = estimates.filter(e => e.status === 'Draft').length;
+  const readyCount = estimates.filter(e => e.status === 'Ready').length;
+  const sentCount = estimates.filter(e => e.status === 'Sent').length;
+  const acceptedCount = estimates.filter(e => e.status === 'Accepted').length;
+  const mobileActions = [
+    { title: 'New Lead / Request', detail: 'Start intake', icon: Plus, link: '/estimates/new', badge: 'New' },
+    { title: 'Estimates', detail: `${draftCount + readyCount} active`, icon: FileText, link: '/estimates', badge: estimates.length.toString() },
+    { title: 'Review Queue', detail: 'Needs owner review', icon: ClipboardList, link: '/review-queue', badge: actions.length.toString() },
+    { title: 'Field Capture', detail: 'Photos, voice, notes', icon: Smartphone, link: '/field', badge: 'Field' },
+  ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -130,6 +138,42 @@ export default function Dashboard() {
       </div>
 
       <PWAInstallGuide />
+
+      {/* MOBILE FIELD APP HOME */}
+      <Card className="sm:hidden">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Field App Home</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            {mobileActions.map(action => (
+              <Button
+                key={action.link}
+                variant="outline"
+                className="h-auto min-h-24 justify-start p-3 text-left"
+                onClick={() => navigate(action.link)}
+              >
+                <div className="flex w-full flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <action.icon className="h-5 w-5 text-primary" />
+                    <Badge variant="secondary" className="text-[10px]">{action.badge}</Badge>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium leading-tight">{action.title}</p>
+                    <p className="text-xs font-normal text-muted-foreground">{action.detail}</p>
+                  </div>
+                </div>
+              </Button>
+            ))}
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            <StatusPill label="Draft" value={draftCount} />
+            <StatusPill label="Ready" value={readyCount} />
+            <StatusPill label="Sent" value={sentCount} />
+            <StatusPill label="Accepted" value={acceptedCount} />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ACTION QUEUE */}
       {actions.length > 0 && (
@@ -277,5 +321,14 @@ function KPI({ title, value, alert }: { title: string; value: string | number; a
         <p className={`text-xl font-bold ${alert ? 'text-destructive' : ''}`}>{value}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function StatusPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border bg-muted/40 px-2 py-2 text-center">
+      <p className="text-base font-bold leading-none">{value}</p>
+      <p className="mt-1 text-[10px] text-muted-foreground">{label}</p>
+    </div>
   );
 }

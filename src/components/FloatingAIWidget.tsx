@@ -106,7 +106,7 @@ export function FloatingAIWidget() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center hover:scale-105 overflow-hidden border-2 border-primary/30 bg-card"
+        className="fixed bottom-24 right-4 z-50 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center hover:scale-105 overflow-hidden border-2 border-primary/30 bg-card sm:bottom-6 sm:right-6"
         aria-label="Open AI Assistant"
       >
         <img src={mascotImg} alt="AI Assistant" className="w-full h-full object-cover" />
@@ -116,7 +116,7 @@ export function FloatingAIWidget() {
 
   if (minimized) {
     return (
-      <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-card border rounded-full shadow-lg px-4 py-2">
+      <div className="fixed bottom-24 right-4 z-50 flex items-center gap-2 bg-card border rounded-full shadow-lg px-4 py-2 sm:bottom-6 sm:right-6">
         <img src={mascotImg} alt="AI" className="w-5 h-5 rounded-full object-cover" />
         <span className="text-xs font-medium">AI Assistant</span>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setMinimized(false)}>
@@ -130,7 +130,7 @@ export function FloatingAIWidget() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[380px] h-[70vh] sm:h-[500px] max-h-[500px] bg-card border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed bottom-24 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[380px] h-[70vh] sm:h-[500px] max-h-[500px] bg-card border rounded-xl shadow-2xl flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-primary/5">
         <div className="flex items-center gap-2">

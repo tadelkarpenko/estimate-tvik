@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FilePlus, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, FilePlus, ChevronLeft, FileText, ClipboardList, Smartphone } from 'lucide-react';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { AppSidebar } from './AppSidebar';
@@ -18,6 +18,13 @@ export function AppLayout() {
     '/review-queue', '/admin', '/field',
   ]);
   const showBack = !TOP_LEVEL.has(location.pathname);
+  const showMobileBottomNav = !location.pathname.startsWith('/field');
+  const bottomNavItems = [
+    { title: 'Home', url: '/admin-dashboard', icon: LayoutDashboard, active: location.pathname === '/admin-dashboard' },
+    { title: 'Estimates', url: '/estimates', icon: FileText, active: location.pathname.startsWith('/estimates') },
+    { title: 'Review', url: '/review-queue', icon: ClipboardList, active: location.pathname === '/review-queue' },
+    { title: 'Field', url: '/field', icon: Smartphone, active: location.pathname.startsWith('/field') },
+  ];
 
   const handleBack = () => {
     // Prefer real history; fall back to a sensible parent route.
@@ -70,11 +77,30 @@ export function AppLayout() {
               <SidebarTrigger className="h-10 w-10" aria-label="Open navigation menu" />
             </div>
           </header>
-          <main className="safe-area-pb flex-1 overflow-auto p-3 sm:p-4 md:p-6">
+          <main className={`safe-area-pb flex-1 overflow-auto p-3 sm:p-4 md:p-6 ${showMobileBottomNav ? 'pb-24 sm:pb-4 md:pb-6' : ''}`}>
             <Outlet />
           </main>
         </div>
       </div>
+      {showMobileBottomNav && (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 px-2 py-2 shadow-lg backdrop-blur sm:hidden safe-area-pb" aria-label="Mobile app navigation">
+          <div className="grid grid-cols-4 gap-1">
+            {bottomNavItems.map(item => (
+              <Button
+                key={item.url}
+                asChild
+                variant={item.active ? 'secondary' : 'ghost'}
+                className="h-14 flex-col gap-1 rounded-md px-1 text-xs"
+              >
+                <Link to={item.url} aria-current={item.active ? 'page' : undefined}>
+                  <item.icon className="h-4 w-4" />
+                  <span className="leading-none">{item.title}</span>
+                </Link>
+              </Button>
+            ))}
+          </div>
+        </nav>
+      )}
       <FloatingAIWidget />
     </SidebarProvider>
   );
