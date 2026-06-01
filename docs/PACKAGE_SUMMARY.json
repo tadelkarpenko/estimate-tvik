@@ -1,0 +1,32 @@
+{
+  "package_name": "TVIK_Service_Classification_Cost_Library_QA_Package_v1",
+  "date": "2026-06-01",
+  "purpose": "Reusable ChatGPT/Codex artifact package for service_slug classification, cost-library QA, scope mismatch health checks, Buildxact-inspired TVIK-owned workflow benchmark, and safe implementation sequencing.",
+  "source_package": "TVIK_Buildxact_ChatGPT_Setup_Agent_Report_Package_v1.zip",
+  "buildxact_boundary": "Public workflow/UI benchmark only; no proprietary UI, branding, code, schema, private screens, or copyrighted assets copied.",
+  "tvik_rules": [
+    "Deterministic pricing first",
+    "AI advisory only",
+    "Estimate record is source of truth",
+    "Human approval before Approved or Sent",
+    "Review Queue for AI suggestions",
+    "Revisions and audit records for accepted/edited suggestions",
+    "No direct AI mutation of approved estimates/pricing/proposals/status",
+    "No pricing calibration before service classification and cost-library filtering are stable"
+  ],
+  "files": [
+    "BUILDXACT_UI_AND_WORKFLOW_BENCHMARK.md",
+    "BUILDXACT_UI_REFERENCE_ACTIONS.csv",
+    "CHATGPT_PROJECT_INSTRUCTIONS_TVIK_ESTIMATOR_BUILDXACT_MODE.md",
+    "CHATGPT_SOURCE_MEMORY_TVIK_ESTIMATOR_BUILDXACT_MODE.md",
+    "CODEX_PROMPTS_SERVICE_CLASSIFICATION_v1.md",
+    "COST_LIBRARY_QA_CHECKLIST.csv",
+    "IMPLEMENTATION_SEQUENCE_SERVICE_CLASSIFICATION.md",
+    "README.md",
+    "SERVICE_CLASSIFICATION_MATRIX.csv",
+    "SERVICE_GOLDEN_TEST_CASES.csv",
+    "TVIK_SERVICE_CLASSIFICATION_COST_LIBRARY_QA_MASTER_v1.md"
+  ],
+  "service_count": 20,
+  "recommended_next_codex_step": "Use Prompt A in CODEX_PROMPTS_SERVICE_CLASSIFICATION_v1.md for report-only audit."
+}

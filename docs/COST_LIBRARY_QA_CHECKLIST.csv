@@ -1,0 +1,23 @@
+field,priority,purpose,qa_note
+item_name,Required,Human-readable item name,Avoid vague names like Misc work; use service-specific names.
+category,Required,Broad category/trade,Should not be the only classifier.
+service_slug,Required future field,Primary service classifier,Prevents Full Rehab fallback misuse.
+trade_family,Required future field,Trade grouping for scope mismatch checks,Used for allowed/blocked trade matrix.
+allowed_service_slugs,Required future field,Services where item can auto-appear,Required before default_included=true.
+blocked_service_slugs,Recommended,Services where item should warn/block,Supports health checks.
+unit,Required,Unit of measure,Must match measurement_profile.
+qty_rule,Required future field,How quantity is derived,Never apply project sqft globally.
+measurement_source,Required future field,manual/input/takeoff/photo/assembly/allowance,Controls auditability.
+phase,Required future field,Proposal/costing phase,Avoid Phase=Other for generated lines.
+labor_rate,Recommended,Labor cost component,Separate labor/material for TVIK.
+material_rate,Recommended,Material cost component,Separate labor/material for TVIK.
+equipment_rate,Optional,Equipment/consumables component,"Useful for power washing, scaffolding, rentals."
+default_markup,Recommended,Markup applied by deterministic engine,"Human-controlled, not AI-set."
+minimum_charge,Recommended,Minimum mobilization/charge protection,Prevents small jobs being underpriced.
+default_included,High-risk,Whether item is auto-generated,Must be service-filtered.
+pdf_default,High-risk,Whether line appears in client PDF,Mismatched or unreviewed lines should default false.
+requires_human_review,Recommended,Flags exceptions/high-risk items,Used for blocked-unless-confirmed trades.
+requires_input_fields,Recommended,Inputs needed before item can price,Prevents placeholder quantities.
+confidence_policy,Recommended,When AI suggests this item,AI suggestion must go to review queue.
+version,Recommended,Item version,Do not silently overwrite old pricing history.
+notes,Optional,Estimator/vendor notes,Internal only unless converted to proposal language.

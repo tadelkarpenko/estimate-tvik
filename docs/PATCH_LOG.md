@@ -8,6 +8,63 @@ Each entry should include date, branch, summary, files changed, whether behavior
 
 ## Entries
 
+### 2026-06-01 - Service Classification Cost Library QA Source Package
+
+Branch: `codex-transition`
+
+Patch name:
+
+Service Classification + Cost Library QA Docs Integration
+
+Purpose:
+
+- Integrated the TVIK Service Classification + Cost Library QA Package v1 into repo documentation.
+- Preserved the package as source material for future `service_slug` classification, allowed/blocked trade rules, required input checklists, measurement/unit rules, cost-library QA, assembly/recipe structure, scope mismatch health checks, PDF safety, AI boundary rules, golden regression tests, and TVIK-owned Buildxact-inspired workflow planning.
+- Kept Buildxact framed only as a public workflow and UI benchmark.
+
+Files changed:
+
+- `docs/TVIK_SERVICE_CLASSIFICATION_COST_LIBRARY_QA_MASTER_v1.md`
+- `docs/CHATGPT_PROJECT_INSTRUCTIONS_TVIK_ESTIMATOR_BUILDXACT_MODE.md`
+- `docs/CHATGPT_SOURCE_MEMORY_TVIK_ESTIMATOR_BUILDXACT_MODE.md`
+- `docs/BUILDXACT_UI_AND_WORKFLOW_BENCHMARK.md`
+- `docs/SERVICE_CLASSIFICATION_MATRIX.csv`
+- `docs/COST_LIBRARY_QA_CHECKLIST.csv`
+- `docs/SERVICE_GOLDEN_TEST_CASES.csv`
+- `docs/CODEX_PROMPTS_SERVICE_CLASSIFICATION_v1.md`
+- `docs/IMPLEMENTATION_SEQUENCE_SERVICE_CLASSIFICATION.md`
+- `docs/ARTIFACT_PACKAGE_MANIFEST.md`
+- `docs/PACKAGE_SUMMARY.json`
+- `docs/PATCH_LOG.md`
+
+Behavior changed: no
+
+Business-critical areas touched:
+
+- Documentation/source artifacts only.
+- No runtime application code changed.
+- No `src/` files changed.
+- No Supabase functions changed.
+- No migrations or database schema changed.
+- No pricing calculations changed.
+- No cost engine behavior changed.
+- No proposal/PDF behavior changed.
+- No approval/status workflow changed.
+- No AI runtime behavior changed.
+- No auth/security logic changed.
+- No service classification or cost-library filtering was implemented in code.
+
+Tests or checks run:
+
+- `git status --short`
+- No runtime tests run. Documentation-only change.
+
+Follow-up needed:
+
+- Review the integrated source package.
+- Use the implementation sequence doc to plan the first report-only or warning-only service classification patch.
+- Do not calibrate pricing until service classification and cost-library filtering are stable.
+
 ### 2026-06-01 - Deck Staining Failure Documentation Integration
 
 Branch: `codex-transition`
