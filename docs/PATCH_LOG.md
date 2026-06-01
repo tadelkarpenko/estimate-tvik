@@ -8,6 +8,51 @@ Each entry should include date, branch, summary, files changed, whether behavior
 
 ## Entries
 
+### 2026-06-01 - P0 Scope Mismatch Warning-Only Runtime Patch
+
+Branch: `codex-transition`
+
+Patch name:
+
+Deterministic Scope Mismatch Warning Shell
+
+Purpose:
+
+- Added warning-only deterministic scope mismatch detection for `deck_staining` and `windows_doors`.
+- Displays an owner-facing `Scope mismatch warning` on New Estimate when a narrow service includes likely unrelated trades.
+- Preserves estimator control by warning only; it does not block save, approval, sending, proposal use, or PDF generation.
+
+Files changed:
+
+- `src/lib/scopeMismatchEngine.ts`
+- `src/lib/scopeMismatchEngine.test.ts`
+- `src/pages/NewEstimate.tsx`
+
+Behavior changed: yes, warning-only UI/helper behavior
+
+Business-critical areas touched:
+
+- Pricing changed: no.
+- Cost engine changed: no.
+- Database/schema changed: no.
+- PDF/proposal behavior changed: no.
+- Approval/status behavior changed: no.
+- AI runtime changed: no.
+- Migrations changed: no.
+- Auth/security changed: no.
+- No line items are mutated by the warning helper.
+- No health-check records are written by this patch.
+
+Tests or checks run:
+
+- `src/lib/scopeMismatchEngine.test.ts` unit tests added.
+- Local test/build verification required before commit.
+
+Follow-up needed:
+
+- Before commit, run `npm.cmd test` and `npm.cmd run build`.
+- Next safe patch should keep scope-mismatch health-check reporting warning-only unless approval/status workflow changes are separately reviewed and approved.
+
 ### 2026-06-01 - Service Classification Cost Library QA Source Package
 
 Branch: `codex-transition`

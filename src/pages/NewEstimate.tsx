@@ -47,6 +47,7 @@ import type { EstimateRevisionLog } from '@/lib/types';
 import { computeCompletenessScore, evaluateApprovalGate, computeCalcStatus, type CompletenessChecklist, type ApprovalGateResult } from '@/lib/reliabilityEngine';
 import { Progress } from '@/components/ui/progress';
 import { AIIntakePanel } from '@/components/AIIntakePanel';
+import { analyzeScopeMismatch } from '@/lib/scopeMismatchEngine';
 
 const defaultEst: Partial<Estimate> = {
   status: 'Draft', created_by: 'TVIK', state: 'IL', project_type: 'Full Rehab',
@@ -750,6 +751,7 @@ export default function NewEstimate() {
   const effectiveMarginPct = marginMult > 0 ? Math.round((1 - 1/marginMult) * 10000) / 100 : 0;
   const materialVolatility = (form as any).material_volatility_flag || false;
   const volatilityReviewed = (form as any).volatility_reviewed || false;
+  const scopeMismatchWarnings = analyzeScopeMismatch(form, dbLineItems);
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
 
@@ -1153,6 +1155,28 @@ export default function NewEstimate() {
             <Card>
               <CardHeader><CardTitle className="text-sm">Estimate Line Items</CardTitle></CardHeader>
               <CardContent>
+                {scopeMismatchWarnings.length > 0 && (
+                  <div className="mb-4 space-y-3">
+                    {scopeMismatchWarnings.map(warning => (
+                      <div key={warning.service} className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                          <div className="space-y-2">
+                            <p className="text-sm font-semibold">Scope mismatch warning</p>
+                            <p className="text-sm">{warning.message}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {warning.mismatchedTrades.map(trade => (
+                                <Badge key={trade} variant="outline" className="border-amber-300 bg-white/70 text-amber-900">
+                                  {trade}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
