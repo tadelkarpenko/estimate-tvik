@@ -8,6 +8,69 @@ Each entry should include date, branch, summary, files changed, whether behavior
 
 ## Entries
 
+### 2026-06-01 - Deck Staining Failure Documentation Integration
+
+Branch: `codex-transition`
+
+Patch name:
+
+Deck Staining Docs-Only Integration
+
+Purpose:
+
+- Document the confirmed EST-0016 deck-staining pricing/scope failure.
+- Preserve the attached TVIK Deck Staining Pricing + Scope Library Package v1 as repo documentation.
+- Define the safe implementation path before any pricing, generation, health-check, approval, or proposal/PDF runtime changes.
+
+Files changed:
+
+- `docs/PRICING_FAILURE_ANALYSIS_DECK_STAINING.md`
+- `docs/DECK_STAINING_SCOPE_AND_ASSEMBLY_SPEC.md`
+- `docs/SERVICE_CLASSIFICATION_AND_TRADE_FILTER_RULES.md`
+- `docs/COST_LIBRARY_RESTRUCTURE_PLAN.md`
+- `docs/ESTIMATE_HEALTH_CHECK_SCOPE_MISMATCH_RULES.md`
+- `docs/DECK_STAINING_GOLDEN_TEST_CASES.md`
+- `docs/PATCH_LOG.md`
+
+Behavior changed: no
+
+Business-critical areas touched:
+
+- Documentation only.
+- No runtime code changed.
+- No pricing logic changed.
+- No estimator calculations changed.
+- No approval/status logic changed.
+- No proposal/PDF logic changed.
+- No AI runtime or writeback logic changed.
+- No Supabase functions changed.
+- No migrations or database schema changed.
+- No auth/security logic changed.
+- No existing estimate records changed.
+
+Root-cause summary documented:
+
+- EST-0016 was intended as deck staining / deck refinishing.
+- The bad line items came from seeded `Full Rehab` cost-library rows selected by deterministic cost-library matching.
+- `250 sf` was propagated by `qty_rule = sqft` using the estimate square footage.
+- Generated deterministic rows were labeled `CostLibrary`.
+- Public PDF inclusion currently behaves as checked unless explicitly false.
+- Existing classification fields do not yet include `service_slug`, `trade_family`, or a `deck_staining` filter.
+- Existing health checks do not yet detect deck-staining scope mismatch.
+
+Tests or checks run:
+
+- `git status --short`
+- No runtime tests run. Documentation-only change.
+
+Follow-up needed:
+
+- Add warning/report health-check behavior for deck-staining scope mismatch.
+- Add service classification and trade filtering for `deck_staining`.
+- Add deck-staining assembly and cost-library rows after docs and tests are accepted.
+- Add golden tests before pricing calibration.
+- Keep proposal/PDF polish as a later explicit patch.
+
 ### 2026-04-24 - Documentation Foundation
 
 Branch: `codex-transition`
