@@ -20,6 +20,7 @@ import JobsList from "./pages/JobsList";
 import JobDetail from "./pages/JobDetail";
 import JobCalendar from "./pages/JobCalendar";
 import MobileFieldCapture from "./pages/MobileFieldCapture";
+import OAuthConsent from "./pages/OAuthConsent";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             <Route path="/" element={<Navigate to="/admin-dashboard" replace />} />
             <Route element={<AuthGate><AppLayout /></AuthGate>}>
               <Route path="/admin-dashboard" element={<Dashboard />} />
