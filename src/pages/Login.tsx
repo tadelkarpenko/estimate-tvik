@@ -1,11 +1,18 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+/** Only allow same-origin relative paths as a post-login redirect. */
+function safeNext(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+  return raw;
+}
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -15,8 +22,14 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { signIn, signUp, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const next = safeNext(params.get('next'));
 
   if (isAuthenticated) {
+    if (next) {
+      window.location.replace(next);
+      return null;
+    }
     navigate('/admin-dashboard', { replace: true });
     return null;
   }
@@ -29,6 +42,8 @@ export default function Login() {
     setLoading(false);
     if (error) {
       setError(error);
+    } else if (next) {
+      window.location.replace(next);
     } else {
       navigate('/admin-dashboard', { replace: true });
     }
@@ -51,6 +66,7 @@ export default function Login() {
       setSuccess('Check your email for a confirmation link, then sign in.');
     }
   };
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
