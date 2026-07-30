@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "sdk_version": "0.25.0",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://qzkyqpzcwqohzskqqqau.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "estimate-genius",
+      "version": "0.1.0",
+      "title": "Estimate Genius"
+    },
+    "tools": [
+      {
+        "name": "list_estimates",
+        "title": "List estimates",
+        "description": "List the signed-in user's estimates with status, client, project name and totals. Optionally filter by status or search text.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "status": {
+              "description": "Filter by estimate status, e.g. Draft, Ready, Sent, Accepted.",
+              "type": "string"
+            },
+            "search": {
+              "description": "Case-insensitive match on project name or client name.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Max rows (default 25).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_estimate",
+        "title": "Get estimate detail",
+        "description": "Get one estimate by its estimate_id, including scope, totals, risk numbers and its line items grouped by phase.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "estimate_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The estimate_id, e.g. EST-0014."
+            }
+          },
+          "required": [
+            "estimate_id"
+          ]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_jobs",
+        "title": "List jobs",
+        "description": "List the signed-in user's jobs with status, schedule window, address and crew lead. Optionally filter by job status or scheduled date range.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "job_status": {
+              "description": "Filter by job status, e.g. Draft, Scheduled, Confirmed, In Progress, Completed.",
+              "type": "string"
+            },
+            "starts_after": {
+              "description": "ISO date/time lower bound on start_datetime.",
+              "type": "string"
+            },
+            "starts_before": {
+              "description": "ISO date/time upper bound on start_datetime.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Max rows (default 25).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_contracts",
+        "title": "List contracts",
+        "description": "List the signed-in user's contracts with contract status, baseline and current financials, percent complete and margin health flags.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "contract_status": {
+              "description": "Filter by contract status.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Max rows (default 25).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "search_cost_library",
+        "title": "Search cost library",
+        "description": "Search the signed-in user's Cost Library reference pricing by trade, project type or description text.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "trade": {
+              "description": "Filter by trade/phase, e.g. Framing, Drywall.",
+              "type": "string"
+            },
+            "project_type": {
+              "description": "Filter by project type, e.g. Bath, Kitchen, Full Rehab.",
+              "type": "string"
+            },
+            "search": {
+              "description": "Case-insensitive match on the item description.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Max rows (default 25).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
